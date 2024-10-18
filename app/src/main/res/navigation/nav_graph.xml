@@ -2,27 +2,33 @@
 <navigation xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:app="http://schemas.android.com/apk/res-auto"
     xmlns:tools="http://schemas.android.com/tools"
-    android:id="@+id/nav_graph"
-    app:startDestination="@id/FirstFragment">
+    app:startDestination="@id/homeFragment">
 
+    <!-- Home screen -->
     <fragment
-        android:id="@+id/FirstFragment"
-        android:name="ca.unb.mobiledev.pinder.FirstFragment"
-        android:label="@string/first_fragment_label"
-        tools:layout="@layout/fragment_first">
-
+        android:id="@+id/homeFragment"
+        android:name="ca.unb.mobiledev.pinder.HomeFragment"
+        android:label="Home">
+        <!-- Add actions to navigate to other fragments -->
         <action
-            android:id="@+id/action_FirstFragment_to_SecondFragment"
-            app:destination="@id/SecondFragment" />
+            android:id="@+id/action_homeFragment_to_taskCreationFragment"
+            app:destination="@id/taskCreationFragment" />
+        <action
+            android:id="@+id/action_homeFragment_to_settingsFragment"
+            app:destination="@id/settingsFragment" />
     </fragment>
+
+    <!-- Task creation screen -->
     <fragment
-        android:id="@+id/SecondFragment"
-        android:name="ca.unb.mobiledev.pinder.SecondFragment"
-        android:label="@string/second_fragment_label"
-        tools:layout="@layout/fragment_second">
+        android:id="@+id/taskCreationFragment"
+        android:name="ca.unb.mobiledev.pinder.TaskCreationFragment"
+        android:label="Create Task"
+        tools:layout="@layout/fragment_task_creation" />
 
-        <action
-            android:id="@+id/action_SecondFragment_to_FirstFragment"
-            app:destination="@id/FirstFragment" />
-    </fragment>
+    <!-- Settings screen -->
+    <fragment
+        android:id="@+id/settingsFragment"
+        android:name="ca.unb.mobiledev.pinder.SettingsFragment"
+        android:label="Settings"
+        tools:layout="@layout/fragment_settings" />
 </navigation>
