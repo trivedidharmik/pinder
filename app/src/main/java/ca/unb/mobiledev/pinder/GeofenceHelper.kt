@@ -51,21 +51,26 @@ class GeofenceHelper(private val context: Context) {
             .build()
     }
 
+    // Add this function to create a geofence from a Reminder
+    fun createGeofenceFromReminder(reminder: Reminder): Geofence {
+        return Geofence.Builder()
+            .setRequestId(reminder.id.toString())
+            .setCircularRegion(reminder.latitude, reminder.longitude, reminder.radius)
+            .setExpirationDuration(Geofence.NEVER_EXPIRE)
+            .setTransitionTypes(Geofence.GEOFENCE_TRANSITION_ENTER)
+            .build()
+    }
+
     // Add geofence to the geofencing client
     fun addGeofence(
-        geofence: Geofence,
-        pendingIntent: PendingIntent,
+        reminder: Reminder,
         onSuccessListener: () -> Unit,
         onFailureListener: (Exception) -> Unit
     ) {
-        val geofencingRequest = GeofencingRequest.Builder()
-            .setInitialTrigger(GeofencingRequest.INITIAL_TRIGGER_ENTER)
-            .addGeofence(geofence)
-            .build()
+        val geofence = createGeofenceFromReminder(reminder)
+        val geofencingRequest = buildGeofencingRequest(geofence)
+        val pendingIntent = getGeofencePendingIntent()
 
-        val geofencingClient = LocationServices.getGeofencingClient(context)
-
-        // Check for permission before adding geofence
         if (ActivityCompat.checkSelfPermission(
                 context,
                 Manifest.permission.ACCESS_FINE_LOCATION
