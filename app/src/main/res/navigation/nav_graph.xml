@@ -2,33 +2,27 @@
 <navigation xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:app="http://schemas.android.com/apk/res-auto"
     xmlns:tools="http://schemas.android.com/tools"
+    android:id="@+id/nav_graph"
     app:startDestination="@id/homeFragment">
 
-    <!-- Home screen -->
     <fragment
         android:id="@+id/homeFragment"
         android:name="ca.unb.mobiledev.pinder.HomeFragment"
-        android:label="Home">
-        <!-- Add actions to navigate to other fragments -->
+        android:label="Home"
+        tools:layout="@layout/fragment_home">
         <action
-            android:id="@+id/action_homeFragment_to_taskCreationFragment"
-            app:destination="@id/taskCreationFragment" />
-        <action
-            android:id="@+id/action_homeFragment_to_settingsFragment"
-            app:destination="@id/settingsFragment" />
+            android:id="@+id/action_homeFragment_to_reminderCreationFragment"
+            app:destination="@id/reminderCreationFragment" />
     </fragment>
 
-    <!-- Task creation screen -->
     <fragment
-        android:id="@+id/taskCreationFragment"
-        android:name="ca.unb.mobiledev.pinder.TaskCreationFragment"
-        android:label="Create Task"
-        tools:layout="@layout/fragment_task_creation" />
-
-    <!-- Settings screen -->
-    <fragment
-        android:id="@+id/settingsFragment"
-        android:name="ca.unb.mobiledev.pinder.SettingsFragment"
-        android:label="Settings"
-        tools:layout="@layout/fragment_settings" />
+        android:id="@+id/reminderCreationFragment"
+        android:name="ca.unb.mobiledev.pinder.ReminderCreationFragment"
+        android:label="Create Reminder"
+        tools:layout="@layout/fragment_reminder_creation">
+        <argument
+            android:name="reminderId"
+            app:argType="long"
+            android:defaultValue="-1L" />
+    </fragment>
 </navigation>
