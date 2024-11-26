@@ -1,6 +1,8 @@
 package ca.unb.mobiledev.pinder
 
 import android.app.AlertDialog
+import android.location.Geocoder
+import android.os.Build
 import android.os.Bundle
 import android.util.Log
 import android.view.LayoutInflater
@@ -9,6 +11,7 @@ import android.view.ViewGroup
 import android.widget.Toast
 import androidx.fragment.app.Fragment
 import androidx.fragment.app.viewModels
+import androidx.lifecycle.ViewModelProvider
 import androidx.navigation.fragment.findNavController
 import ca.unb.mobiledev.pinder.databinding.FragmentReminderCreationBinding
 import com.google.android.gms.common.api.Status
@@ -17,47 +20,57 @@ import com.google.android.gms.maps.GoogleMap
 import com.google.android.gms.maps.OnMapReadyCallback
 import com.google.android.gms.maps.SupportMapFragment
 import com.google.android.gms.maps.model.LatLng
+import com.google.android.gms.maps.model.Marker
 import com.google.android.gms.maps.model.MarkerOptions
 import com.google.android.libraries.places.api.Places
 import com.google.android.libraries.places.api.model.Place
 import com.google.android.libraries.places.widget.AutocompleteSupportFragment
 import com.google.android.libraries.places.widget.listener.PlaceSelectionListener
-import android.location.Geocoder
-import android.os.Build
-import com.google.android.gms.maps.model.Marker
 import java.io.IOException
 import java.util.Locale
 
 class ReminderCreationFragment : Fragment(), OnMapReadyCallback {
 
+    private companion object {
+        const val DEFAULT_ZOOM = 15f
+        const val DEFAULT_LAT = 45.9636  // Default to UNB coordinates
+        const val DEFAULT_LNG = -66.6431
+        const val MIN_RADIUS = 50f
+        const val MAX_RADIUS = 10000f
+        const val TAG = "ReminderCreation"
+    }
+
     private var _binding: FragmentReminderCreationBinding? = null
     private val binding get() = _binding!!
-    // Initialize ViewModel with factory
+    private lateinit var permissionHelper: PermissionHelper
+    private lateinit var geofenceHelper: GeofenceHelper
+
     private val viewModel: ReminderViewModel by viewModels {
-        ReminderViewModelFactory(requireActivity().application)
+        ViewModelProvider.AndroidViewModelFactory.getInstance(requireActivity().application)
     }
+
     private var map: GoogleMap? = null
     private var selectedLocation: LatLng? = null
-    private lateinit var geofenceHelper: GeofenceHelper
+    private var currentZoom: Float = DEFAULT_ZOOM
     private var reminderId: Long = -1L
-    private lateinit var autocompleteSupportFragment: AutocompleteSupportFragment
-    private val TAG = "ReminderCreation"
 
     override fun onCreateView(
-        inflater: LayoutInflater, container: ViewGroup?,
+        inflater: LayoutInflater,
+        container: ViewGroup?,
         savedInstanceState: Bundle?
     ): View {
         _binding = FragmentReminderCreationBinding.inflate(inflater, container, false)
+        permissionHelper = PermissionHelper(this)
         return binding.root
     }
 
     override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
         super.onViewCreated(view, savedInstanceState)
+        initializeComponents()
+    }
 
-        // Initialize GeofenceHelper
+    private fun initializeComponents() {
         geofenceHelper = GeofenceHelper(requireContext())
-
-        // Get reminderId from arguments
         reminderId = arguments?.getLong("reminderId", -1L) ?: -1L
 
         if (!Places.isInitialized()) {
@@ -65,14 +78,35 @@ class ReminderCreationFragment : Fragment(), OnMapReadyCallback {
             return
         }
 
-        try {
-            setupUI()
-            setupAutocomplete()
-            setupMap()
-            loadReminderIfEditing()
-        } catch (e: Exception) {
-            Log.e(TAG, "Error in setup: ${e.message}")
-            Toast.makeText(requireContext(), "Error setting up: ${e.message}", Toast.LENGTH_LONG).show()
+        permissionHelper.checkAndRequestPermissions {
+            try {
+                setupUI()
+                setupPlacesAutocomplete()
+                setupMap()
+                loadReminderIfEditing()
+            } catch (e: Exception) {
+                Log.e(TAG, "Error in setup: ${e.message}")
+                Toast.makeText(requireContext(), "Error setting up: ${e.message}", Toast.LENGTH_LONG).show()
+            }
+        }
+    }
+
+    private fun setupUI() {
+        binding.apply {
+            buttonSave.setOnClickListener {
+                if (validateInput()) {
+                    saveReminder()
+                }
+            }
+
+            buttonDelete.apply {
+                visibility = if (reminderId != -1L) View.VISIBLE else View.GONE
+                setOnClickListener {
+                    if (reminderId != -1L) {
+                        showDeleteConfirmationDialog()
+                    }
+                }
+            }
         }
     }
 
@@ -82,147 +116,103 @@ class ReminderCreationFragment : Fragment(), OnMapReadyCallback {
         mapFragment.getMapAsync(this)
     }
 
-    private fun setupAutocomplete() {
-        val autocompleteFragment =
-            childFragmentManager.findFragmentById(R.id.autocomplete_fragment) as? AutocompleteSupportFragment
+    override fun onMapReady(googleMap: GoogleMap) {
+        map = googleMap.apply {
+            // Set up map UI settings
+            uiSettings.apply {
+                isZoomControlsEnabled = true
+                isScrollGesturesEnabled = true
+                isZoomGesturesEnabled = true
+            }
 
-        autocompleteFragment?.apply {
-            setPlaceFields(listOf(
-                Place.Field.ID,
-                Place.Field.DISPLAY_NAME,
-                Place.Field.LOCATION,
-                Place.Field.FORMATTED_ADDRESS
-            ))
+            // Initialize with default location if none selected
+            if (selectedLocation == null) {
+                selectedLocation = LatLng(DEFAULT_LAT, DEFAULT_LNG)
+                animateCameraToLocation(selectedLocation!!, DEFAULT_ZOOM)
+            }
 
-            setOnPlaceSelectedListener(object : PlaceSelectionListener {
-                override fun onPlaceSelected(place: Place) {
-                    try {
-                        binding.editTextAddress.setText(place.formattedAddress)
-                        place.location?.let { latLng ->
-                            selectedLocation = latLng
-                            updateMapMarker()
-                        }
-                    } catch (e: Exception) {
-                        Log.e(TAG, "Error selecting place: ${e.message}")
-                    }
-                }
+            setOnMapClickListener { latLng ->
+                handleLocationSelection(latLng)
+            }
 
-                override fun onError(status: Status) {
-                    Log.e(TAG, "Error: $status")
-                    Toast.makeText(context, "Error: ${status.statusMessage}", Toast.LENGTH_SHORT).show()
+            setOnCameraIdleListener {
+                currentZoom = cameraPosition.zoom
+            }
+
+            setOnMarkerDragListener(object : GoogleMap.OnMarkerDragListener {
+                override fun onMarkerDragStart(marker: Marker) {}
+                override fun onMarkerDrag(marker: Marker) {}
+                override fun onMarkerDragEnd(marker: Marker) {
+                    handleLocationSelection(marker.position)
                 }
             })
-        } ?: run {
-            Log.e(TAG, "Error getting autocomplete fragment")
-        }
-    }
-
-    private fun moveMapCamera(latLng: LatLng) {
-        map?.animateCamera(
-            CameraUpdateFactory.newLatLngZoom(latLng, 15f)
-        )
-    }
-
-    // Helper function to clear autocomplete when needed
-    private fun clearAutocomplete() {
-        autocompleteSupportFragment.setText("")
-    }
-
-    private fun setupUI() {
-        // Existing save button setup
-        binding.buttonSave.setOnClickListener {
-            if (validateInput()) {
-                saveReminder()
-            }
         }
 
-        // Show delete button only in edit mode
-        if (reminderId != -1L) {
-            binding.buttonDelete.visibility = View.VISIBLE
-            binding.buttonDelete.setOnClickListener {
-                showDeleteConfirmationDialog()
-            }
-        } else {
-            binding.buttonDelete.visibility = View.GONE
-        }
-    }
-
-    private fun showDeleteConfirmationDialog() {
-        AlertDialog.Builder(requireContext())
-            .setTitle("Delete Reminder")
-            .setMessage("Are you sure you want to delete this reminder?")
-            .setPositiveButton("Delete") { _, _ ->
-                deleteReminder()
-            }
-            .setNegativeButton("Cancel", null)
-            .show()
-    }
-
-    private fun deleteReminder() {
-        viewModel.deleteReminder(reminderId)
-        Toast.makeText(context, "Reminder deleted", Toast.LENGTH_SHORT).show()
-        findNavController().navigateUp()
-    }
-
-    private fun validateInput(): Boolean {
-        if (binding.editTextTitle.text.toString().isEmpty()) {
-            Toast.makeText(context, "Please enter a title", Toast.LENGTH_SHORT).show()
-            return false
-        }
-        if (binding.editTextAddress.text.toString().isEmpty()) {
-            Toast.makeText(context, "Please select an address", Toast.LENGTH_SHORT).show()
-            return false
-        }
-        if (selectedLocation == null) {
-            Toast.makeText(context, "Please select a location on the map", Toast.LENGTH_SHORT).show()
-            return false
-        }
-        return true
-    }
-
-    private fun loadReminderIfEditing() {
-        if (reminderId != -1L) {
-            viewModel.getReminder(reminderId).observe(viewLifecycleOwner) { reminder ->
-                if (reminder != null) {
-                    binding.editTextTitle.setText(reminder.title)
-                }
-                if (reminder != null) {
-                    binding.editTextDescription.setText(reminder.description)
-                }
-                if (reminder != null) {
-                    binding.editTextAddress.setText(reminder.address)
-                }
-                if (reminder != null) {
-                    binding.editTextRadius.setText(reminder.radius.toString())
-                }
-                if (reminder != null) {
-                    selectedLocation = LatLng(reminder.latitude, reminder.longitude)
-                }
-                updateMapMarker()
-            }
-        }
-    }
-
-    override fun onMapReady(googleMap: GoogleMap) {
-        map = googleMap
-        map?.setOnMapClickListener { latLng ->
-            selectedLocation = latLng
-            updateMapMarker()
-            updateAddressFromLocation(latLng)
-        }
-
-        // Add marker drag listener
-        map?.setOnMarkerDragListener(object : GoogleMap.OnMarkerDragListener {
-            override fun onMarkerDragStart(marker: Marker) {}
-
-            override fun onMarkerDrag(marker: Marker) {}
-
-            override fun onMarkerDragEnd(marker: Marker) {
-                selectedLocation = marker.position
-                updateAddressFromLocation(marker.position)
-            }
-        })
         updateMapMarker()
+    }
+
+    private fun setupPlacesAutocomplete() {
+        try {
+            val autocompleteFragment = childFragmentManager
+                .findFragmentById(R.id.autocomplete_fragment) as? AutocompleteSupportFragment
+                ?: return
+
+            autocompleteFragment.apply {
+                setPlaceFields(listOf(
+                    Place.Field.ID,
+                    Place.Field.DISPLAY_NAME,
+                    Place.Field.FORMATTED_ADDRESS,
+                    Place.Field.LOCATION,
+                    Place.Field.VIEWPORT
+                ))
+
+                setHint("Search for a location")
+                setCountries("US", "CA")
+
+                setOnPlaceSelectedListener(object : PlaceSelectionListener {
+                    override fun onPlaceSelected(place: Place) {
+                        Log.d(TAG, "Place selected: ${place.displayName}, ${place.formattedAddress}")
+                        place.location?.let { location ->
+                            selectedLocation = location
+                            binding.editTextAddress.setText(place.formattedAddress)
+                            animateCameraToLocation(location, DEFAULT_ZOOM)
+                            updateMapMarker()
+                        }
+                    }
+
+                    override fun onError(status: Status) {
+                        Log.e(TAG, "An error occurred: $status")
+                        Toast.makeText(
+                            context,
+                            "Error selecting place: ${status.statusMessage}",
+                            Toast.LENGTH_SHORT
+                        ).show()
+                    }
+                })
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "Error setting up Places Autocomplete: ${e.message}")
+            Toast.makeText(
+                context,
+                "Error setting up location search: ${e.message}",
+                Toast.LENGTH_LONG
+            ).show()
+        }
+    }
+
+    private fun handleLocationSelection(latLng: LatLng) {
+        selectedLocation = latLng
+        updateMapMarker()
+        updateAddressFromLocation(latLng)
+    }
+
+    private fun animateCameraToLocation(location: LatLng, zoom: Float? = null) {
+        map?.animateCamera(
+            CameraUpdateFactory.newLatLngZoom(
+                location,
+                zoom ?: currentZoom
+            )
+        )
     }
 
     private fun updateMapMarker() {
@@ -231,10 +221,10 @@ class ReminderCreationFragment : Fragment(), OnMapReadyCallback {
             map?.addMarker(
                 MarkerOptions()
                     .position(location)
-                    .draggable(true) // Make marker draggable
+                    .draggable(true)
                     .title("Selected Location")
             )
-            map?.moveCamera(CameraUpdateFactory.newLatLngZoom(location, 15f))
+            animateCameraToLocation(location)
         }
     }
 
@@ -243,23 +233,18 @@ class ReminderCreationFragment : Fragment(), OnMapReadyCallback {
             val geocoder = Geocoder(requireContext(), Locale.getDefault())
 
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-                // For Android 13 and above
                 geocoder.getFromLocation(latLng.latitude, latLng.longitude, 1) { addresses ->
                     handleGeocodeResult(addresses)
                 }
             } else {
-                // For Android 12 and below
+                @Suppress("DEPRECATION")
                 val addresses = geocoder.getFromLocation(latLng.latitude, latLng.longitude, 1)
                 handleGeocodeResult(addresses ?: emptyList())
             }
         } catch (e: IOException) {
             Log.e(TAG, "Error getting address: ${e.message}")
             activity?.runOnUiThread {
-                Toast.makeText(
-                    context,
-                    "Error getting address: ${e.message}",
-                    Toast.LENGTH_SHORT
-                ).show()
+                Toast.makeText(context, "Error getting address: ${e.message}", Toast.LENGTH_SHORT).show()
             }
         }
     }
@@ -271,101 +256,171 @@ class ReminderCreationFragment : Fragment(), OnMapReadyCallback {
 
             activity?.runOnUiThread {
                 binding.editTextAddress.setText(addressText)
-
-                // Update Places Autocomplete fragment
-                val autocompleteFragment = childFragmentManager
-                    .findFragmentById(R.id.autocomplete_fragment) as? AutocompleteSupportFragment
-                autocompleteFragment?.setText(addressText)
+                childFragmentManager.findFragmentById(R.id.autocomplete_fragment)
+                    ?.let { it as? AutocompleteSupportFragment }
+                    ?.setText(addressText)
             }
         } else {
             activity?.runOnUiThread {
-                Toast.makeText(
-                    context,
-                    "Could not find address for this location",
-                    Toast.LENGTH_SHORT
-                ).show()
+                Toast.makeText(context, "Could not find address for this location", Toast.LENGTH_SHORT).show()
             }
         }
     }
 
     private fun buildAddressText(address: android.location.Address): String {
-        val addressParts = mutableListOf<String>()
+        return buildString {
+            // Street address
+            val streetNumber = address.subThoroughfare
+            val street = address.thoroughfare
+            if (!streetNumber.isNullOrEmpty() && !street.isNullOrEmpty()) {
+                append("$streetNumber $street")
+            } else if (!street.isNullOrEmpty()) {
+                append(street)
+            }
 
-        // Add street address
-        val streetNumber = address.subThoroughfare
-        val street = address.thoroughfare
-        if (!streetNumber.isNullOrEmpty() && !street.isNullOrEmpty()) {
-            addressParts.add("$streetNumber $street")
-        } else if (!street.isNullOrEmpty()) {
-            addressParts.add(street)
+            // City
+            address.locality?.let { append(", $it") }
+
+            // State/Province
+            address.adminArea?.let { append(", $it") }
+
+            // Postal code
+            address.postalCode?.let { append(", $it") }
+
+            // Country
+            address.countryName?.let { append(", $it") }
         }
+    }
 
-        // Add city
-        if (!address.locality.isNullOrEmpty()) {
-            addressParts.add(address.locality)
+    private fun validateInput(): Boolean {
+        val title = binding.editTextTitle.text.toString()
+        val description = binding.editTextDescription.text.toString()
+        val address = binding.editTextAddress.text.toString()
+        val radius = binding.editTextRadius.text.toString().toFloatOrNull() ?: 100f
+
+        return when {
+            title.isBlank() -> {
+                Toast.makeText(context, "Please enter a title", Toast.LENGTH_SHORT).show()
+                false
+            }
+            description.isBlank() -> {
+                Toast.makeText(context, "Please enter a description", Toast.LENGTH_SHORT).show()
+                false
+            }
+            address.isBlank() -> {
+                Toast.makeText(context, "Please select a location", Toast.LENGTH_SHORT).show()
+                false
+            }
+            selectedLocation == null -> {
+                Toast.makeText(context, "Please select a location on the map", Toast.LENGTH_SHORT).show()
+                false
+            }
+            radius < MIN_RADIUS -> {
+                Toast.makeText(context, "Radius must be at least $MIN_RADIUS meters", Toast.LENGTH_SHORT).show()
+                false
+            }
+            radius > MAX_RADIUS -> {
+                Toast.makeText(context, "Radius cannot exceed $MAX_RADIUS meters", Toast.LENGTH_SHORT).show()
+                false
+            }
+            else -> true
         }
-
-        // Add state/province
-        if (!address.adminArea.isNullOrEmpty()) {
-            addressParts.add(address.adminArea)
-        }
-
-        // Add postal code
-        if (!address.postalCode.isNullOrEmpty()) {
-            addressParts.add(address.postalCode)
-        }
-
-        // Add country
-        if (!address.countryName.isNullOrEmpty()) {
-            addressParts.add(address.countryName)
-        }
-
-        return addressParts.joinToString(", ")
     }
 
     private fun saveReminder() {
-        try {
-            val title = binding.editTextTitle.text.toString()
-            val description = binding.editTextDescription.text.toString()
-            val address = binding.editTextAddress.text.toString()
-            val radius = binding.editTextRadius.text.toString().toFloatOrNull() ?: 100f
-
-            selectedLocation?.let { location ->
-                val reminder = Reminder(
-                    id = if (reminderId != -1L) reminderId else 0,
-                    title = title,
-                    description = description,
-                    address = address,
-                    latitude = location.latitude,
-                    longitude = location.longitude,
-                    radius = radius
-                )
-
-                // First save the reminder
+        permissionHelper.checkAndRequestPermissions {
+            try {
+                val reminder = createReminderFromInput()
                 if (reminderId != -1L) {
-                    viewModel.updateReminder(reminder)
+                    updateExistingReminder(reminder)
                 } else {
-                    viewModel.addReminder(reminder)
+                    addNewReminder(reminder)
                 }
-
-                // Then add geofence
-                geofenceHelper.addGeofence(
-                    reminder,
-                    onSuccessListener = {
-                        Toast.makeText(context, "Reminder saved successfully", Toast.LENGTH_SHORT).show()
-                        findNavController().navigateUp()
-                    },
-                    onFailureListener = { exception ->
-                        Log.e(TAG, "Failed to add geofence: ${exception.message}")
-                        Toast.makeText(context, "Failed to add geofence: ${exception.message}", Toast.LENGTH_SHORT).show()
-                    }
-                )
-            } ?: run {
-                Toast.makeText(context, "Please select a location", Toast.LENGTH_SHORT).show()
+            } catch (e: Exception) {
+                Log.e(TAG, "Error saving reminder: ${e.message}")
+                Toast.makeText(context, "Error saving reminder: ${e.message}", Toast.LENGTH_SHORT).show()
             }
-        } catch (e: Exception) {
-            Log.e(TAG, "Error saving reminder: ${e.message}")
-            Toast.makeText(context, "Error saving reminder: ${e.message}", Toast.LENGTH_SHORT).show()
+        }
+    }
+
+    private fun createReminderFromInput(): Reminder {
+        val title = binding.editTextTitle.text.toString()
+        val description = binding.editTextDescription.text.toString()
+        val address = binding.editTextAddress.text.toString()
+        val radius = binding.editTextRadius.text.toString().toFloatOrNull() ?: 100f
+        val location = selectedLocation ?: throw IllegalStateException("Location not selected")
+
+        return Reminder(
+            id = if (reminderId != -1L) reminderId else 0,
+            title = title,
+            description = description,
+            address = address,
+            latitude = location.latitude,
+            longitude = location.longitude,
+            radius = radius
+        )
+    }
+
+    private fun addNewReminder(reminder: Reminder) {
+        viewModel.addReminder(reminder,
+            onSuccess = {
+                Toast.makeText(context, "Reminder saved", Toast.LENGTH_SHORT).show()
+                findNavController().navigateUp()
+            },
+            onError = { error ->
+                Toast.makeText(context, "Error: $error", Toast.LENGTH_SHORT).show()
+            }
+        )
+    }
+
+    private fun updateExistingReminder(reminder: Reminder) {
+        viewModel.updateReminder(reminder,
+            onSuccess = {
+                Toast.makeText(context, "Reminder updated", Toast.LENGTH_SHORT).show()
+                findNavController().navigateUp()
+            },
+            onError = { error ->
+                Toast.makeText(context, "Error: $error", Toast.LENGTH_SHORT).show()
+            }
+        )
+    }
+
+    private fun showDeleteConfirmationDialog() {
+        AlertDialog.Builder(requireContext())
+            .setTitle("Delete Reminder")
+            .setMessage("Are you sure you want to delete this reminder?")
+            .setPositiveButton("Delete") { _, _ -> deleteReminder() }
+            .setNegativeButton("Cancel", null)
+            .show()
+    }
+
+    private fun deleteReminder() {
+        viewModel.deleteReminder(
+            reminderId,
+            onSuccess = {
+                Toast.makeText(context, "Reminder deleted", Toast.LENGTH_SHORT).show()
+                findNavController().navigateUp()
+            },
+            onError = { error ->
+                Toast.makeText(context, "Error: $error", Toast.LENGTH_SHORT).show()
+            }
+        )
+    }
+
+    private fun loadReminderIfEditing() {
+        if (reminderId != -1L) {
+            viewModel.getReminder(reminderId).observe(viewLifecycleOwner) { reminder ->
+                reminder?.let {
+                    binding.apply {
+                        editTextTitle.setText(it.title)
+                        editTextDescription.setText(it.description)
+                        editTextAddress.setText(it.address)
+                        editTextRadius.setText(it.radius.toString())
+                    }
+                    selectedLocation = LatLng(it.latitude, it.longitude)
+                    updateMapMarker()
+                }
+            }
         }
     }
 

@@ -1,7 +1,6 @@
 package ca.unb.mobiledev.pinder
 
 import android.Manifest
-import android.app.Activity
 import android.app.PendingIntent
 import android.content.Context
 import android.content.Intent
@@ -9,41 +8,65 @@ import android.content.pm.PackageManager
 import android.util.Log
 import androidx.core.app.ActivityCompat
 import com.google.android.gms.location.Geofence
-import com.google.android.gms.location.GeofenceStatusCodes
+import com.google.android.gms.location.GeofencingClient
 import com.google.android.gms.location.GeofencingRequest
 import com.google.android.gms.location.LocationServices
-import com.google.android.gms.tasks.OnFailureListener
-import com.google.android.gms.tasks.OnSuccessListener
 
 class GeofenceHelper(private val context: Context) {
-
     private val TAG = "GeofenceHelper"
+    private val geofencingClient: GeofencingClient = LocationServices.getGeofencingClient(context)
 
-    // The geofencing client used to interact with the geofencing API
-    private val geofencingClient = LocationServices.getGeofencingClient(context)
-
-    // Get a PendingIntent for the GeofenceBroadcastReceiver
-    private fun getGeofencePendingIntent(): PendingIntent {
+    private val geofencePendingIntent: PendingIntent by lazy {
         val intent = Intent(context, GeofenceBroadcastReceiver::class.java)
-        return PendingIntent.getBroadcast(
+        PendingIntent.getBroadcast(
             context,
             0,
             intent,
-            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_MUTABLE
         )
     }
 
-    // Function to build a geofence object
-    fun buildGeofence(id: String, latitude: Double, longitude: Double, radius: Float, transitionTypes: Int): Geofence {
+    fun addGeofence(
+        reminder: Reminder,
+        onSuccessListener: () -> Unit,
+        onFailureListener: (Exception) -> Unit
+    ) {
+        if (!checkPermissions()) {
+            onFailureListener(Exception("Location permissions not granted"))
+            return
+        }
+
+        val geofence = buildGeofence(reminder)
+        val request = buildGeofencingRequest(geofence)
+
+        try {
+            geofencingClient.addGeofences(request, geofencePendingIntent)
+                .addOnSuccessListener {
+                    Log.d(TAG, "Successfully added geofence for reminder: ${reminder.id}")
+                    onSuccessListener()
+                }
+                .addOnFailureListener { e ->
+                    Log.e(TAG, "Failed to add geofence: ${e.message}")
+                    onFailureListener(e)
+                }
+        } catch (e: SecurityException) {
+            onFailureListener(e)
+        }
+    }
+
+    private fun buildGeofence(reminder: Reminder): Geofence {
         return Geofence.Builder()
-            .setRequestId(id)
-            .setCircularRegion(latitude, longitude, radius)
-            .setTransitionTypes(transitionTypes)
-            .setExpirationDuration(Geofence.NEVER_EXPIRE) // Geofence will never expire
+            .setRequestId(reminder.id.toString())
+            .setCircularRegion(
+                reminder.latitude,
+                reminder.longitude,
+                reminder.radius
+            )
+            .setTransitionTypes(Geofence.GEOFENCE_TRANSITION_ENTER)
+            .setExpirationDuration(Geofence.NEVER_EXPIRE)
             .build()
     }
 
-    // Function to build the geofencing request
     private fun buildGeofencingRequest(geofence: Geofence): GeofencingRequest {
         return GeofencingRequest.Builder()
             .setInitialTrigger(GeofencingRequest.INITIAL_TRIGGER_ENTER)
@@ -51,51 +74,42 @@ class GeofenceHelper(private val context: Context) {
             .build()
     }
 
-    // Add this function to create a geofence from a Reminder
-    fun createGeofenceFromReminder(reminder: Reminder): Geofence {
-        return Geofence.Builder()
-            .setRequestId(reminder.id.toString())
-            .setCircularRegion(reminder.latitude, reminder.longitude, reminder.radius)
-            .setExpirationDuration(Geofence.NEVER_EXPIRE)
-            .setTransitionTypes(Geofence.GEOFENCE_TRANSITION_ENTER)
-            .build()
-    }
-
-    // Add geofence to the geofencing client
-    fun addGeofence(
+    fun updateGeofence(
         reminder: Reminder,
         onSuccessListener: () -> Unit,
         onFailureListener: (Exception) -> Unit
     ) {
-        val geofence = createGeofenceFromReminder(reminder)
-        val geofencingRequest = buildGeofencingRequest(geofence)
-        val pendingIntent = getGeofencePendingIntent()
-
-        if (ActivityCompat.checkSelfPermission(
-                context,
-                Manifest.permission.ACCESS_FINE_LOCATION
-            ) != PackageManager.PERMISSION_GRANTED
-        ) {
-            onFailureListener(Exception("Location permission not granted"))
-            return
+        removeGeofence(reminder.id.toString()) {
+            addGeofence(reminder, onSuccessListener, onFailureListener)
         }
+    }
 
-        geofencingClient.addGeofences(geofencingRequest, pendingIntent)
-            .addOnSuccessListener {
-                onSuccessListener()
-            }
-            .addOnFailureListener { e ->
-                onFailureListener(e)
+    fun removeGeofence(
+        geofenceId: String,
+        onComplete: (() -> Unit)? = null
+    ) {
+        geofencingClient.removeGeofences(listOf(geofenceId))
+            .addOnCompleteListener {
+                Log.d(TAG, "Removed geofence: $geofenceId")
+                onComplete?.invoke()
             }
     }
 
-    // Handle geofence errors (optional, useful for debugging)
-    fun getErrorString(errorCode: Int): String {
-        return when (errorCode) {
-            GeofenceStatusCodes.GEOFENCE_NOT_AVAILABLE -> "Geofence service is not available now."
-            GeofenceStatusCodes.GEOFENCE_TOO_MANY_GEOFENCES -> "Too many geofences registered."
-            GeofenceStatusCodes.GEOFENCE_TOO_MANY_PENDING_INTENTS -> "Too many pending intents."
-            else -> "Unknown error."
+    private fun checkPermissions(): Boolean {
+        val fineLocation = ActivityCompat.checkSelfPermission(
+            context,
+            Manifest.permission.ACCESS_FINE_LOCATION
+        ) == PackageManager.PERMISSION_GRANTED
+
+        val backgroundLocation = if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.Q) {
+            ActivityCompat.checkSelfPermission(
+                context,
+                Manifest.permission.ACCESS_BACKGROUND_LOCATION
+            ) == PackageManager.PERMISSION_GRANTED
+        } else {
+            true
         }
+
+        return fineLocation && backgroundLocation
     }
 }

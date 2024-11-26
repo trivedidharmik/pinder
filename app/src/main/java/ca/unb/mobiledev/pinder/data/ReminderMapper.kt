@@ -1,6 +1,8 @@
 package ca.unb.mobiledev.pinder.data
 
 import ca.unb.mobiledev.pinder.Reminder
+import ca.unb.mobiledev.pinder.ReminderPriority
+import ca.unb.mobiledev.pinder.ReminderStatus
 
 object ReminderMapper {
     fun toEntity(reminder: Reminder) = ReminderEntity(
@@ -10,7 +12,11 @@ object ReminderMapper {
         address = reminder.address,
         latitude = reminder.latitude,
         longitude = reminder.longitude,
-        radius = reminder.radius
+        radius = reminder.radius,
+        status = reminder.status.name,
+        priority = reminder.priority.name,
+        createdAt = reminder.createdAt,
+        completedAt = reminder.completedAt
     )
 
     fun fromEntity(entity: ReminderEntity) = Reminder(
@@ -20,7 +26,11 @@ object ReminderMapper {
         address = entity.address,
         latitude = entity.latitude,
         longitude = entity.longitude,
-        radius = entity.radius
+        radius = entity.radius,
+        status = ReminderStatus.valueOf(entity.status),
+        priority = ReminderPriority.valueOf(entity.priority),
+        createdAt = entity.createdAt,
+        completedAt = entity.completedAt
     )
 
     fun fromEntityList(entities: List<ReminderEntity>) = entities.map(::fromEntity)
