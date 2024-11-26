@@ -12,5 +12,9 @@ data class ReminderEntity(
     val address: String,
     val latitude: Double,
     val longitude: Double,
-    val radius: Float
+    val radius: Float,
+    val status: String = "PENDING",
+    val priority: String = "MEDIUM",
+    val createdAt: Long = System.currentTimeMillis(),
+    val completedAt: Long? = null
 )

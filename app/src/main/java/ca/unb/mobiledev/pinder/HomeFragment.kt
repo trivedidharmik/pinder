@@ -7,6 +7,7 @@ import android.view.View
 import android.view.ViewGroup
 import androidx.fragment.app.Fragment
 import androidx.fragment.app.viewModels
+import androidx.lifecycle.ViewModelProvider
 import androidx.navigation.fragment.findNavController
 import androidx.recyclerview.widget.ItemTouchHelper
 import androidx.recyclerview.widget.RecyclerView
@@ -17,9 +18,12 @@ class HomeFragment : Fragment() {
 
     private var _binding: FragmentHomeBinding? = null
     private val binding get() = _binding!!
+
+    // Correct ViewModel initialization using by viewModels() delegate
     private val viewModel: ReminderViewModel by viewModels {
-        ReminderViewModelFactory(requireActivity().application)
+        ViewModelProvider.AndroidViewModelFactory.getInstance(requireActivity().application)
     }
+
     private lateinit var reminderAdapter: ReminderAdapter
 
     override fun onCreateView(
@@ -78,25 +82,33 @@ class HomeFragment : Fragment() {
             }
             .setNegativeButton("Cancel") { dialog, _ ->
                 dialog.dismiss()
-                // Refresh the adapter to reset the swiped item
                 reminderAdapter.notifyDataSetChanged()
             }
             .setOnCancelListener {
-                // Refresh the adapter to reset the swiped item
                 reminderAdapter.notifyDataSetChanged()
             }
             .show()
     }
 
     private fun deleteReminder(reminder: Reminder) {
-        viewModel.deleteReminder(reminder.id)
-        Snackbar.make(
-            binding.root,
-            "Reminder deleted",
-            Snackbar.LENGTH_LONG
-        ).setAction("UNDO") {
-            viewModel.addReminder(reminder)
-        }.show()
+        viewModel.deleteReminder(
+            reminder.id,
+            onSuccess = {
+                Snackbar.make(binding.root, "Reminder deleted", Snackbar.LENGTH_LONG)
+                    .setAction("UNDO") {
+                        viewModel.addReminder(
+                            reminder,
+                            onSuccess = { },
+                            onError = { error ->
+                                Snackbar.make(binding.root, "Error: $error", Snackbar.LENGTH_SHORT).show()
+                            }
+                        )
+                    }.show()
+            },
+            onError = { error ->
+                Snackbar.make(binding.root, "Error: $error", Snackbar.LENGTH_SHORT).show()
+            }
+        )
     }
 
     private fun setupFloatingActionButton() {

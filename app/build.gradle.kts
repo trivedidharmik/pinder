@@ -6,7 +6,7 @@ plugins {
 
 android {
     namespace = "ca.unb.mobiledev.pinder"
-    compileSdk = 34
+    compileSdk = 35
 
     defaultConfig {
         applicationId = "ca.unb.mobiledev.pinder"
@@ -54,6 +54,7 @@ dependencies {
     implementation(libs.androidx.lifecycle.livedata.ktx)
     implementation(libs.androidx.lifecycle.viewmodel.ktx)
     implementation(libs.androidx.lifecycle.runtime.ktx)
+    implementation(libs.androidx.work.runtime.ktx)
     ksp(libs.androidx.room.compiler)
     testImplementation(libs.junit)
     androidTestImplementation(libs.androidx.junit)

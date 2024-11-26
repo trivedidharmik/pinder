@@ -2,23 +2,22 @@ package ca.unb.mobiledev.pinder
 
 import android.app.Application
 import android.util.Log
-import androidx.lifecycle.*
-import ca.unb.mobiledev.pinder.data.ReminderDatabase
-import ca.unb.mobiledev.pinder.data.ReminderMapper
-import kotlinx.coroutines.flow.map
-import kotlinx.coroutines.launch
-import androidx.lifecycle.viewModelScope
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.LiveData
-import androidx.lifecycle.ViewModel
-import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.asLiveData
+import androidx.lifecycle.liveData
+import androidx.lifecycle.viewModelScope
+import ca.unb.mobiledev.pinder.data.ReminderDatabase
+import ca.unb.mobiledev.pinder.data.ReminderMapper
 import kotlinx.coroutines.flow.catch
+import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.launch
 
 class ReminderViewModel(application: Application) : AndroidViewModel(application) {
     private val TAG = "ReminderViewModel"
     private val database = ReminderDatabase.getDatabase(application)
     private val reminderDao = database.reminderDao()
+    private val geofenceHelper = GeofenceHelper(application)
 
     private val _reminders = reminderDao.getAllReminders()
         .catch { exception ->
@@ -26,62 +25,76 @@ class ReminderViewModel(application: Application) : AndroidViewModel(application
             emit(emptyList())
         }
         .map { entities ->
-            Log.d(TAG, "Fetched ${entities.size} reminders")
             ReminderMapper.fromEntityList(entities)
         }
-    val reminders = _reminders.asLiveData(viewModelScope.coroutineContext)
+    val reminders = _reminders.asLiveData()
 
-    fun addReminder(reminder: Reminder) {
+    fun addReminder(reminder: Reminder, onSuccess: () -> Unit, onError: (String) -> Unit) {
         viewModelScope.launch {
             try {
-                Log.d(TAG, "Adding reminder: $reminder")
                 val entity = ReminderMapper.toEntity(reminder)
-                reminderDao.insertReminder(entity)
-                Log.d(TAG, "Successfully added reminder")
+                val id = reminderDao.insertReminder(entity)
+
+                val reminderWithId = reminder.copy(id = id)
+                geofenceHelper.addGeofence(
+                    reminderWithId,
+                    onSuccessListener = { onSuccess() },
+                    onFailureListener = { exception ->
+                        Log.e(TAG, "Failed to add geofence: ${exception.message}")
+                        onSuccess() // Still consider it a success as data is saved
+                    }
+                )
             } catch (e: Exception) {
                 Log.e(TAG, "Error adding reminder: ${e.message}")
+                onError(e.message ?: "Unknown error occurred")
             }
         }
     }
 
-    fun updateReminder(reminder: Reminder) {
+    fun updateReminder(reminder: Reminder, onSuccess: () -> Unit, onError: (String) -> Unit) {
         viewModelScope.launch {
             try {
-                Log.d(TAG, "Updating reminder: $reminder")
                 val entity = ReminderMapper.toEntity(reminder)
                 reminderDao.updateReminder(entity)
-                Log.d(TAG, "Successfully updated reminder")
+
+                geofenceHelper.updateGeofence(
+                    reminder,
+                    onSuccessListener = { onSuccess() },
+                    onFailureListener = { exception ->
+                        Log.e(TAG, "Failed to update geofence: ${exception.message}")
+                        onSuccess() // Still consider it a success as data is saved
+                    }
+                )
             } catch (e: Exception) {
                 Log.e(TAG, "Error updating reminder: ${e.message}")
+                onError(e.message ?: "Unknown error occurred")
             }
         }
     }
 
-    fun deleteReminder(reminderId: Long) {
+    fun deleteReminder(reminderId: Long, onSuccess: () -> Unit, onError: (String) -> Unit) {
         viewModelScope.launch {
-            reminderDao.getReminderById(reminderId)?.let {
-                reminderDao.deleteReminder(it)
+            try {
+                val reminder = reminderDao.getReminderById(reminderId)
+                if (reminder != null) {
+                    reminderDao.deleteReminder(reminder)
+                    geofenceHelper.removeGeofence(reminderId.toString())
+                    onSuccess()
+                }
+            } catch (e: Exception) {
+                Log.e(TAG, "Error deleting reminder: ${e.message}")
+                onError(e.message ?: "Unknown error occurred")
             }
         }
     }
 
-    fun getReminder(reminderId: Long): LiveData<Reminder?> = liveData(viewModelScope.coroutineContext) {
+    fun getReminder(reminderId: Long): LiveData<Reminder?> = liveData {
         try {
             val entity = reminderDao.getReminderById(reminderId)
             emit(entity?.let { ReminderMapper.fromEntity(it) })
         } catch (e: Exception) {
-            // Handle any errors here
+            Log.e(TAG, "Error getting reminder: ${e.message}")
             emit(null)
         }
-    }
-}
-
-class ReminderViewModelFactory(private val application: Application) : ViewModelProvider.Factory {
-    override fun <T : ViewModel> create(modelClass: Class<T>): T {
-        if (modelClass.isAssignableFrom(ReminderViewModel::class.java)) {
-            @Suppress("UNCHECKED_CAST")
-            return ReminderViewModel(application) as T
-        }
-        throw IllegalArgumentException("Unknown ViewModel class")
     }
 }
