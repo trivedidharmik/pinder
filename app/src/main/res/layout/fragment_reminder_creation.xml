@@ -149,32 +149,39 @@
         android:layout_height="wrap_content"
         android:layout_gravity="bottom"
         android:background="?attr/colorSurface"
-        android:elevation="4dp"
-        android:padding="16dp">
+        android:elevation="4dp">
 
         <LinearLayout
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:orientation="vertical"
-            android:gravity="center">
+            android:orientation="horizontal"
+            android:gravity="center"
+            android:paddingStart="8dp"
+            android:paddingEnd="8dp"
+            android:paddingTop="8dp"
+            android:paddingBottom="8dp">
 
             <com.google.android.material.button.MaterialButton
                 android:id="@+id/buttonSave"
-                android:layout_width="match_parent"
+                android:layout_width="0dp"
                 android:layout_height="wrap_content"
+                android:layout_weight="1"
                 android:minHeight="48dp"
-                android:text="Save Reminder"
-                android:padding="12dp"
+                android:text="Save"
+                android:padding="8dp"
                 app:cornerRadius="8dp" />
+
+            <Space
+                android:layout_width="8dp"
+                android:layout_height="wrap_content" />
 
             <com.google.android.material.button.MaterialButton
                 android:id="@+id/buttonDelete"
-                android:layout_width="match_parent"
+                android:layout_width="0dp"
                 android:layout_height="wrap_content"
-                android:layout_marginTop="8dp"
+                android:layout_weight="1"
                 android:minHeight="48dp"
-                android:padding="12dp"
-                android:text="Delete Reminder"
+                android:text="Delete"
                 android:visibility="gone"
                 app:backgroundTint="?attr/colorSecondary"
                 app:cornerRadius="8dp" />
