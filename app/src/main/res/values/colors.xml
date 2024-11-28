@@ -3,4 +3,7 @@
     <color name="black">#FF000000</color>
     <color name="white">#FFFFFFFF</color>
     <color name="ic_launcher_background">#4CAF50</color>
+    <color name="lighter_background">#aad9ac</color>
+    <color name="foreground_text">#0A0A0A</color> <!-- AAA on launcher_background -->
+    <color name="view_background">#F4FCF4</color>
 </resources>
