@@ -6,4 +6,5 @@
     <color name="lighter_background">#aad9ac</color>
     <color name="foreground_text">#0A0A0A</color> <!-- AAA on launcher_background -->
     <color name="view_background">#F4FCF4</color>
+    <color name="secondary_peach">#d9aaac</color>
 </resources>

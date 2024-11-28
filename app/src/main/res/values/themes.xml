@@ -5,6 +5,7 @@
         <!-- <item name="colorPrimary">@color/my_light_primary</item> -->
         <item name="colorPrimary">@color/lighter_background</item>
         <item name="colorOnPrimary">@color/foreground_text</item>
+        <item name="colorSecondary">@color/secondary_peach</item>
     </style>
 
     <style name="Theme.PINDER" parent="Base.Theme.PINDER" />
