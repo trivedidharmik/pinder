@@ -4,7 +4,9 @@
     <color name="white">#FFFFFFFF</color>
     <color name="ic_launcher_background">#4CAF50</color>
     <color name="lighter_background">#aad9ac</color>
+    <color name="darker_background">#438c4f</color>
     <color name="foreground_text">#0A0A0A</color> <!-- AAA on launcher_background -->
     <color name="view_background">#F4FCF4</color>
     <color name="secondary_peach">#d9aaac</color>
+    <color name="dark_secondary_peach">#8c4b4d</color>
 </resources>
