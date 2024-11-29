@@ -41,8 +41,9 @@ class GeofenceBroadcastReceiver : BroadcastReceiver() {
         Log.d(TAG, "Geofence transition type: $geofenceTransition")
 
         when (geofenceTransition) {
-            Geofence.GEOFENCE_TRANSITION_ENTER -> {
-                Log.d(TAG, "Geofence ENTER detected")
+            Geofence.GEOFENCE_TRANSITION_ENTER,
+            Geofence.GEOFENCE_TRANSITION_DWELL -> {
+                Log.d(TAG, "Geofence ENTER/DWELL detected")
                 handleGeofenceEnter(context, geofencingEvent)
             }
             else -> Log.d(TAG, "Unhandled geofence transition: $geofenceTransition")

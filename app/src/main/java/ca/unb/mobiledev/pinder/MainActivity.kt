@@ -1,9 +1,11 @@
 package ca.unb.mobiledev.pinder
 
+import android.content.pm.PackageManager
 import android.os.Bundle
 import android.util.Log
 import android.widget.Toast
 import androidx.appcompat.app.AppCompatActivity
+import androidx.core.app.ActivityCompat
 import androidx.navigation.NavController
 import androidx.navigation.fragment.NavHostFragment
 import androidx.navigation.ui.AppBarConfiguration
@@ -11,6 +13,7 @@ import androidx.navigation.ui.navigateUp
 import androidx.navigation.ui.setupActionBarWithNavController
 import ca.unb.mobiledev.pinder.databinding.ActivityMainBinding
 import com.google.android.libraries.places.api.Places
+import android.Manifest
 
 class MainActivity : AppCompatActivity() {
 
@@ -21,6 +24,18 @@ class MainActivity : AppCompatActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+
+        val permissions = arrayOf(
+            Manifest.permission.ACCESS_FINE_LOCATION,
+            Manifest.permission.ACCESS_COARSE_LOCATION,
+            Manifest.permission.ACCESS_BACKGROUND_LOCATION,
+            Manifest.permission.POST_NOTIFICATIONS
+        )
+
+        permissions.forEach { permission ->
+            val isGranted = ActivityCompat.checkSelfPermission(this, permission) == PackageManager.PERMISSION_GRANTED
+            Log.d("Permissions", "$permission granted: $isGranted")
+        }
 
         // Initialize Places API
         initializePlaces()
