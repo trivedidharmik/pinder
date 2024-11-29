@@ -53,24 +53,24 @@ class NotificationHelper(private val context: Context) {
                 .setStyle(NotificationCompat.BigTextStyle().bigText(
                     "${reminder.description}\nLocation: ${reminder.address}"
                 ))
-                .setPriority(NotificationCompat.PRIORITY_HIGH)
+                .setPriority(NotificationCompat.PRIORITY_MAX) // Changed to MAX for more prominence
                 .setContentIntent(contentIntent)
                 .setAutoCancel(true)
-                .addAction(R.drawable.ic_check, "Mark as Done", markDonePendingIntent)
-                .addAction(R.drawable.ic_snooze, "Snooze", snoozePendingIntent)
+                .setCategory(NotificationCompat.CATEGORY_REMINDER) // Added category
+                .setVisibility(NotificationCompat.VISIBILITY_PUBLIC) // Make visible on lock screen
+                .addAction(
+                    R.drawable.ic_check,
+                    "Mark as Done",
+                    markDonePendingIntent
+                )
+                .addAction(
+                    R.drawable.ic_snooze,
+                    "Snooze for 1 hour", // Updated text to be more descriptive
+                    snoozePendingIntent
+                )
                 .build()
 
-            // Show the notification
-            with(NotificationManagerCompat.from(context)) {
-                if (ActivityCompat.checkSelfPermission(
-                        context,
-                        Manifest.permission.POST_NOTIFICATIONS
-                    ) == PackageManager.PERMISSION_GRANTED
-                ) {
-                    notify(reminder.id.toInt(), notification)
-                    Log.d(TAG, "Notification shown successfully for reminder: ${reminder.id}")
-                }
-            }
+            showNotification(reminder.id.toInt(), notification)
         } catch (e: Exception) {
             Log.e(TAG, "Error showing notification: ${e.message}", e)
         }
@@ -149,6 +149,62 @@ class NotificationHelper(private val context: Context) {
             ) == PackageManager.PERMISSION_GRANTED
         } else {
             true
+        }
+    }
+
+    fun showSnoozedReminderNotification(reminder: Reminder) {
+        if (!checkNotificationPermission()) {
+            Log.e(TAG, "Notification permission not granted")
+            return
+        }
+
+        try {
+            val contentIntent = createContentIntent(reminder)
+            val markDonePendingIntent = createMarkDoneIntent(reminder)
+            val snoozePendingIntent = createSnoozeIntent(reminder)
+
+            val notification = NotificationCompat.Builder(context, CHANNEL_ID_GENERAL)
+                .setSmallIcon(R.drawable.ic_notification)
+                .setContentTitle("Snoozed Reminder: ${reminder.title}")
+                .setContentText(reminder.description)
+                .setStyle(NotificationCompat.BigTextStyle().bigText(
+                    "${reminder.description}\nLocation: ${reminder.address}\nSnoozed reminder"
+                ))
+                .setPriority(NotificationCompat.PRIORITY_HIGH)
+                .setContentIntent(contentIntent)
+                .setAutoCancel(true)
+                .setCategory(NotificationCompat.CATEGORY_REMINDER)
+                .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
+                .addAction(
+                    R.drawable.ic_check,
+                    "Mark as Done",
+                    markDonePendingIntent
+                )
+                .addAction(
+                    R.drawable.ic_snooze,
+                    "Snooze for 1 hour",
+                    snoozePendingIntent
+                )
+                .build()
+
+            showNotification(reminder.id.toInt(), notification)
+        } catch (e: Exception) {
+            Log.e(TAG, "Error showing snoozed notification: ${e.message}", e)
+        }
+    }
+
+    private fun showNotification(id: Int, notification: android.app.Notification) {
+        with(NotificationManagerCompat.from(context)) {
+            if (ActivityCompat.checkSelfPermission(
+                    context,
+                    Manifest.permission.POST_NOTIFICATIONS
+                ) == PackageManager.PERMISSION_GRANTED
+            ) {
+                notify(id, notification)
+                Log.d(TAG, "Notification shown successfully for ID: $id")
+            } else {
+                Log.e(TAG, "Notification permission not granted when trying to show notification")
+            }
         }
     }
 }
