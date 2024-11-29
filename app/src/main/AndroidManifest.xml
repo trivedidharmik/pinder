@@ -33,6 +33,16 @@
             </intent-filter>
         </receiver>
 
+        <receiver
+            android:name=".NotificationActionReceiver"
+            android:enabled="true"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="ca.unb.mobiledev.pinder.ACTION_MARK_DONE" />
+                <action android:name="ca.unb.mobiledev.pinder.ACTION_SNOOZE" />
+            </intent-filter>
+        </receiver>
+
         <!-- Google Maps API Key -->
         <meta-data
             android:name="com.google.android.geo.API_KEY"
