@@ -13,11 +13,17 @@ import com.google.android.gms.location.GeofencingRequest
 import com.google.android.gms.location.LocationServices
 
 class GeofenceHelper(private val context: Context) {
-    private val TAG = "GeofenceHelper"
+    companion object {
+        private const val TAG = "GeofenceHelper"
+        const val ACTION_GEOFENCE_RECEIVED = "ca.unb.mobiledev.pinder.ACTION_GEOFENCE_RECEIVED"
+    }
+
     private val geofencingClient: GeofencingClient = LocationServices.getGeofencingClient(context)
 
     private val geofencePendingIntent: PendingIntent by lazy {
-        val intent = Intent(context, GeofenceBroadcastReceiver::class.java)
+        val intent = Intent(context, GeofenceBroadcastReceiver::class.java).apply {
+            action = ACTION_GEOFENCE_RECEIVED
+        }
         PendingIntent.getBroadcast(
             context,
             0,
@@ -32,24 +38,27 @@ class GeofenceHelper(private val context: Context) {
         onFailureListener: (Exception) -> Unit
     ) {
         if (!checkPermissions()) {
+            Log.e(TAG, "Permissions not granted for geofencing")
             onFailureListener(Exception("Location permissions not granted"))
             return
         }
 
-        val geofence = buildGeofence(reminder)
-        val request = buildGeofencingRequest(geofence)
-
         try {
+            Log.d(TAG, "Adding geofence for reminder ${reminder.id} at location (${reminder.latitude}, ${reminder.longitude})")
+            val geofence = buildGeofence(reminder)
+            val request = buildGeofencingRequest(geofence)
+
             geofencingClient.addGeofences(request, geofencePendingIntent)
                 .addOnSuccessListener {
                     Log.d(TAG, "Successfully added geofence for reminder: ${reminder.id}")
                     onSuccessListener()
                 }
                 .addOnFailureListener { e ->
-                    Log.e(TAG, "Failed to add geofence: ${e.message}")
+                    Log.e(TAG, "Failed to add geofence: ${e.message}", e)
                     onFailureListener(e)
                 }
         } catch (e: SecurityException) {
+            Log.e(TAG, "Security exception when adding geofence: ${e.message}", e)
             onFailureListener(e)
         }
     }
@@ -62,14 +71,15 @@ class GeofenceHelper(private val context: Context) {
                 reminder.longitude,
                 reminder.radius
             )
-            .setTransitionTypes(Geofence.GEOFENCE_TRANSITION_ENTER)
+            .setTransitionTypes(Geofence.GEOFENCE_TRANSITION_ENTER or Geofence.GEOFENCE_TRANSITION_DWELL)
+            .setLoiteringDelay(30000) // 30 seconds dwell time
             .setExpirationDuration(Geofence.NEVER_EXPIRE)
             .build()
     }
 
     private fun buildGeofencingRequest(geofence: Geofence): GeofencingRequest {
         return GeofencingRequest.Builder()
-            .setInitialTrigger(GeofencingRequest.INITIAL_TRIGGER_ENTER)
+            .setInitialTrigger(GeofencingRequest.INITIAL_TRIGGER_ENTER or GeofencingRequest.INITIAL_TRIGGER_DWELL)
             .addGeofence(geofence)
             .build()
     }
@@ -101,6 +111,11 @@ class GeofenceHelper(private val context: Context) {
             Manifest.permission.ACCESS_FINE_LOCATION
         ) == PackageManager.PERMISSION_GRANTED
 
+        val coarseLocation = ActivityCompat.checkSelfPermission(
+            context,
+            Manifest.permission.ACCESS_COARSE_LOCATION
+        ) == PackageManager.PERMISSION_GRANTED
+
         val backgroundLocation = if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.Q) {
             ActivityCompat.checkSelfPermission(
                 context,
@@ -110,6 +125,6 @@ class GeofenceHelper(private val context: Context) {
             true
         }
 
-        return fineLocation && backgroundLocation
+        return fineLocation && coarseLocation && backgroundLocation
     }
 }
