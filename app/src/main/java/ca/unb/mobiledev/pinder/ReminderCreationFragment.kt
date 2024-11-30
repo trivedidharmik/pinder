@@ -2,13 +2,15 @@ package ca.unb.mobiledev.pinder
 
 import android.app.AlertDialog
 import android.location.Geocoder
-import android.os.Build
+import android.location.Location
+import android.location.LocationManager
 import android.os.Bundle
 import android.util.Log
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
 import android.widget.Toast
+import androidx.core.content.ContextCompat
 import androidx.fragment.app.Fragment
 import androidx.fragment.app.viewModels
 import androidx.lifecycle.ViewModelProvider
@@ -24,10 +26,12 @@ import com.google.android.gms.maps.model.Marker
 import com.google.android.gms.maps.model.MarkerOptions
 import com.google.android.libraries.places.api.Places
 import com.google.android.libraries.places.api.model.Place
+import com.google.android.libraries.places.api.model.RectangularBounds
 import com.google.android.libraries.places.widget.AutocompleteSupportFragment
 import com.google.android.libraries.places.widget.listener.PlaceSelectionListener
 import java.io.IOException
 import java.util.Locale
+import kotlin.math.cos
 
 class ReminderCreationFragment : Fragment(), OnMapReadyCallback {
 
@@ -83,12 +87,21 @@ class ReminderCreationFragment : Fragment(), OnMapReadyCallback {
                 setupUI()
                 setupPlacesAutocomplete()
                 setupMap()
-                loadReminderIfEditing()
+                if (reminderId == -1L) {
+                    loadDefaultValues() // Load default radius for new reminders
+                } else {
+                    loadReminderIfEditing()
+                }
             } catch (e: Exception) {
                 Log.e(TAG, "Error in setup: ${e.message}")
                 Toast.makeText(requireContext(), "Error setting up: ${e.message}", Toast.LENGTH_LONG).show()
             }
         }
+    }
+
+    private fun loadDefaultValues() {
+        val preferencesHelper = PreferencesHelper(requireContext())
+        binding.editTextRadius.setText(preferencesHelper.defaultRadius.toString())
     }
 
     private fun setupUI() {
@@ -151,52 +164,152 @@ class ReminderCreationFragment : Fragment(), OnMapReadyCallback {
         updateMapMarker()
     }
 
-    private fun setupPlacesAutocomplete() {
-        try {
-            val autocompleteFragment = childFragmentManager
-                .findFragmentById(R.id.autocomplete_fragment) as? AutocompleteSupportFragment
-                ?: return
+//    private fun setupPlacesAutocomplete() {
+//        try {
+//            val autocompleteFragment = childFragmentManager
+//                .findFragmentById(R.id.autocomplete_fragment) as? AutocompleteSupportFragment
+//                ?: return
+//
+//            autocompleteFragment.apply {
+//                setPlaceFields(listOf(
+//                    Place.Field.ID,
+//                    Place.Field.DISPLAY_NAME,
+//                    Place.Field.FORMATTED_ADDRESS,
+//                    Place.Field.LOCATION,
+//                    Place.Field.VIEWPORT
+//                ))
+//
+//                setHint("Search for a location")
+//                setCountries("US", "CA")
+//
+//                setOnPlaceSelectedListener(object : PlaceSelectionListener {
+//                    override fun onPlaceSelected(place: Place) {
+//                        Log.d(TAG, "Place selected: ${place.displayName}, ${place.formattedAddress}")
+//                        place.location?.let { location ->
+//                            selectedLocation = location
+//                            binding.editTextAddress.setText(place.formattedAddress)
+//                            animateCameraToLocation(location, DEFAULT_ZOOM)
+//                            updateMapMarker()
+//                        }
+//                    }
+//
+//                    override fun onError(status: Status) {
+//                        Log.e(TAG, "An error occurred: $status")
+//                        Toast.makeText(
+//                            context,
+//                            "Error selecting place: ${status.statusMessage}",
+//                            Toast.LENGTH_SHORT
+//                        ).show()
+//                    }
+//                })
+//            }
+//        } catch (e: Exception) {
+//            Log.e(TAG, "Error setting up Places Autocomplete: ${e.message}")
+//            Toast.makeText(
+//                context,
+//                "Error setting up location search: ${e.message}",
+//                Toast.LENGTH_LONG
+//            ).show()
+//        }
+//    }
+private fun setupPlacesAutocomplete() {
+    try {
+        val autocompleteFragment = childFragmentManager
+            .findFragmentById(R.id.autocomplete_fragment) as? AutocompleteSupportFragment
+            ?: return
 
-            autocompleteFragment.apply {
-                setPlaceFields(listOf(
-                    Place.Field.ID,
-                    Place.Field.DISPLAY_NAME,
-                    Place.Field.FORMATTED_ADDRESS,
-                    Place.Field.LOCATION,
-                    Place.Field.VIEWPORT
-                ))
+        // Get the user's last known location
+        val lastLocation: Location? = getLastKnownLocation()
 
-                setHint("Search for a location")
-                setCountries("US", "CA")
+        autocompleteFragment.apply {
+            setPlaceFields(listOf(
+                Place.Field.ID,
+                Place.Field.DISPLAY_NAME,
+                Place.Field.FORMATTED_ADDRESS,
+                Place.Field.LOCATION,
+                Place.Field.VIEWPORT
+            ))
 
-                setOnPlaceSelectedListener(object : PlaceSelectionListener {
-                    override fun onPlaceSelected(place: Place) {
-                        Log.d(TAG, "Place selected: ${place.displayName}, ${place.formattedAddress}")
-                        place.location?.let { location ->
-                            selectedLocation = location
-                            binding.editTextAddress.setText(place.formattedAddress)
-                            animateCameraToLocation(location, DEFAULT_ZOOM)
-                            updateMapMarker()
-                        }
-                    }
+            setHint("Search for a location")
 
-                    override fun onError(status: Status) {
-                        Log.e(TAG, "An error occurred: $status")
-                        Toast.makeText(
-                            context,
-                            "Error selecting place: ${status.statusMessage}",
-                            Toast.LENGTH_SHORT
-                        ).show()
-                    }
-                })
+            // Only set location bias without any type filters or restrictions
+            lastLocation?.let { location ->
+                // Create a larger rectangular bounds (around 100km radius for better local context)
+                val latRadian = Math.toRadians(location.latitude)
+                val degLatKm = 110.574 // km per degree of latitude
+                val degLongKm = 111.320 * cos(latRadian) // km per degree of longitude
+
+                val latDelta = 100.0 / degLatKm // +/- 100km in lat
+                val longDelta = 100.0 / degLongKm // +/- 100km in long
+
+                val bounds = RectangularBounds.newInstance(
+                    LatLng(location.latitude - latDelta, location.longitude - longDelta),
+                    LatLng(location.latitude + latDelta, location.longitude + longDelta)
+                )
+
+                // Only set bias, no restriction
+                setLocationBias(bounds)
             }
+
+            setCountries("US", "CA")
+
+            setOnPlaceSelectedListener(object : PlaceSelectionListener {
+                override fun onPlaceSelected(place: Place) {
+                    Log.d(TAG, "Place selected: ${place.displayName}, ${place.formattedAddress}")
+                    place.location?.let { location ->
+                        selectedLocation = location
+                        binding.editTextAddress.setText(place.formattedAddress)
+                        animateCameraToLocation(location, DEFAULT_ZOOM)
+                        updateMapMarker()
+                    }
+                }
+
+                override fun onError(status: Status) {
+                    Log.e(TAG, "An error occurred: $status")
+                    Toast.makeText(
+                        context,
+                        "Error selecting place: ${status.statusMessage}",
+                        Toast.LENGTH_SHORT
+                    ).show()
+                }
+            })
+        }
+    } catch (e: Exception) {
+        Log.e(TAG, "Error setting up Places Autocomplete: ${e.message}")
+        Toast.makeText(
+            context,
+            "Error setting up location search: ${e.message}",
+            Toast.LENGTH_LONG
+        ).show()
+    }
+}
+
+    private fun getLastKnownLocation(): Location? {
+        val locationManager = ContextCompat.getSystemService(requireContext(), LocationManager::class.java)
+
+        if (!permissionHelper.hasLocationPermission()) {
+            Log.d(TAG, "Location permission not granted")
+            return null
+        }
+
+        try {
+            // Check GPS provider
+            if (locationManager?.isProviderEnabled(LocationManager.GPS_PROVIDER) == true) {
+                return locationManager.getLastKnownLocation(LocationManager.GPS_PROVIDER)
+            }
+
+            // Fall back to network provider
+            if (locationManager?.isProviderEnabled(LocationManager.NETWORK_PROVIDER) == true) {
+                return locationManager.getLastKnownLocation(LocationManager.NETWORK_PROVIDER)
+            }
+
+            return null
+        } catch (e: SecurityException) {
+            Log.e(TAG, "Security Exception when getting location: ${e.message}")
+            return null
         } catch (e: Exception) {
-            Log.e(TAG, "Error setting up Places Autocomplete: ${e.message}")
-            Toast.makeText(
-                context,
-                "Error setting up location search: ${e.message}",
-                Toast.LENGTH_LONG
-            ).show()
+            Log.e(TAG, "Error getting location: ${e.message}")
+            return null
         }
     }
 
@@ -232,14 +345,8 @@ class ReminderCreationFragment : Fragment(), OnMapReadyCallback {
         try {
             val geocoder = Geocoder(requireContext(), Locale.getDefault())
 
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-                geocoder.getFromLocation(latLng.latitude, latLng.longitude, 1) { addresses ->
-                    handleGeocodeResult(addresses)
-                }
-            } else {
-                @Suppress("DEPRECATION")
-                val addresses = geocoder.getFromLocation(latLng.latitude, latLng.longitude, 1)
-                handleGeocodeResult(addresses ?: emptyList())
+            geocoder.getFromLocation(latLng.latitude, latLng.longitude, 1) { addresses ->
+                handleGeocodeResult(addresses)
             }
         } catch (e: IOException) {
             Log.e(TAG, "Error getting address: ${e.message}")

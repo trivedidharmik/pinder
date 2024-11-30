@@ -88,4 +88,10 @@ class PermissionHelper(private val fragment: Fragment) {
             fragment.startActivity(this)
         }
     }
+    fun hasLocationPermission(): Boolean {
+        return ContextCompat.checkSelfPermission(
+            fragment.requireContext(),
+            Manifest.permission.ACCESS_FINE_LOCATION
+        ) == PackageManager.PERMISSION_GRANTED
+    }
 }
