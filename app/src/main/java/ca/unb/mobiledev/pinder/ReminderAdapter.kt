@@ -53,7 +53,7 @@ class ReminderAdapter(private val onItemClick: (Reminder) -> Unit) :
                 }
                 textViewStatus.text = statusText
 
-                // Optional: Add completion date for completed reminders
+                // Add completion date for completed reminders
                 if (reminder.status == ReminderStatus.COMPLETED && reminder.completedAt != null) {
                     val dateFormat = SimpleDateFormat("MMM dd, yyyy", Locale.getDefault())
                     val completedDate = dateFormat.format(Date(reminder.completedAt))

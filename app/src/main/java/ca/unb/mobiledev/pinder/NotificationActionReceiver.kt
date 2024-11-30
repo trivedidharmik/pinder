@@ -139,6 +139,8 @@ class NotificationActionReceiver : BroadcastReceiver() {
             Log.d(TAG, "Scheduling delayed notification for reminder: ${reminder.id}")
 
             val workManager = WorkManager.getInstance(context)
+            val preferencesHelper = PreferencesHelper(context)
+            val snoozeDurationMinutes = preferencesHelper.defaultSnoozeDuration.toLong()
 
             // Create unique work name using reminder ID
             val workName = "snooze_reminder_${reminder.id}"
@@ -147,14 +149,13 @@ class NotificationActionReceiver : BroadcastReceiver() {
             workManager.cancelUniqueWork(workName)
 
             val notificationWork = OneTimeWorkRequestBuilder<NotificationWorker>()
-                .setInitialDelay(1, TimeUnit.HOURS)
+                .setInitialDelay(snoozeDurationMinutes, TimeUnit.MINUTES)
                 .setInputData(workDataOf(
                     "reminderId" to reminder.id,
                     "isSnooze" to true
                 ))
                 .build()
 
-            // Use unique work to ensure only one snooze notification per reminder
             workManager.enqueueUniqueWork(
                 workName,
                 ExistingWorkPolicy.REPLACE,
