@@ -8,21 +8,26 @@
     <fragment
         android:id="@+id/homeFragment"
         android:name="ca.unb.mobiledev.pinder.HomeFragment"
-        android:label="Home"
+        android:label="@string/app_name"
         tools:layout="@layout/fragment_home">
         <action
             android:id="@+id/action_homeFragment_to_reminderCreationFragment"
             app:destination="@id/reminderCreationFragment" />
+        <action
+            android:id="@+id/action_homeFragment_to_settingsFragment"
+            app:destination="@id/settingsFragment" />
     </fragment>
 
     <fragment
         android:id="@+id/reminderCreationFragment"
         android:name="ca.unb.mobiledev.pinder.ReminderCreationFragment"
-        android:label="Create Reminder"
-        tools:layout="@layout/fragment_reminder_creation">
-        <argument
-            android:name="reminderId"
-            app:argType="long"
-            android:defaultValue="-1L" />
-    </fragment>
+        android:label="New Reminder"
+        tools:layout="@layout/fragment_reminder_creation" />
+
+    <fragment
+        android:id="@+id/settingsFragment"
+        android:name="ca.unb.mobiledev.pinder.SettingsFragment"
+        android:label="Settings"
+        tools:layout="@layout/fragment_settings" />
+
 </navigation>
