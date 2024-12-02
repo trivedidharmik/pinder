@@ -22,12 +22,42 @@
         android:id="@+id/reminderCreationFragment"
         android:name="ca.unb.mobiledev.pinder.ReminderCreationFragment"
         android:label="New Reminder"
-        tools:layout="@layout/fragment_reminder_creation" />
+        tools:layout="@layout/fragment_reminder_creation">
+        <action
+            android:id="@+id/action_reminderCreationFragment_to_placeSelectionFragment"
+            app:destination="@id/placeSelectionFragment"
+            app:enterAnim="@anim/nav_default_enter_anim"
+            app:exitAnim="@anim/nav_default_exit_anim"
+            app:popEnterAnim="@anim/nav_default_pop_enter_anim"
+            app:popExitAnim="@anim/nav_default_pop_exit_anim" />
+    </fragment>
 
     <fragment
         android:id="@+id/settingsFragment"
         android:name="ca.unb.mobiledev.pinder.SettingsFragment"
         android:label="Settings"
         tools:layout="@layout/fragment_settings" />
+
+    <fragment
+        android:id="@+id/placeSelectionFragment"
+        android:name="ca.unb.mobiledev.pinder.PlaceSelectionFragment"
+        android:label="Select Location">
+        <argument
+            android:name="address"
+            app:argType="string"
+            app:nullable="true" />
+        <argument
+            android:name="latitude"
+            app:argType="float"
+            android:defaultValue="0.0" />
+        <argument
+            android:name="longitude"
+            app:argType="float"
+            android:defaultValue="0.0" />
+        <argument
+            android:name="radius"
+            app:argType="float"
+            android:defaultValue="100.0f" />
+    </fragment>
 
 </navigation>

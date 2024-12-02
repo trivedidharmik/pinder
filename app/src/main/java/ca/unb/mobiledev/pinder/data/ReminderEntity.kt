@@ -13,6 +13,7 @@ data class ReminderEntity(
     val latitude: Double,
     val longitude: Double,
     val radius: Float,
+    val geofenceType: String = "ARRIVE_AT",
     val status: String = "PENDING",
     val priority: String = "MEDIUM",
     val createdAt: Long = System.currentTimeMillis(),

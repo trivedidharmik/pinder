@@ -1,62 +1,44 @@
 package ca.unb.mobiledev.pinder
 
 import android.app.AlertDialog
-import android.location.Geocoder
-import android.location.Location
-import android.location.LocationManager
 import android.os.Bundle
 import android.util.Log
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
 import android.widget.Toast
-import androidx.core.content.ContextCompat
 import androidx.fragment.app.Fragment
 import androidx.fragment.app.viewModels
 import androidx.lifecycle.ViewModelProvider
 import androidx.navigation.fragment.findNavController
 import ca.unb.mobiledev.pinder.databinding.FragmentReminderCreationBinding
-import com.google.android.gms.common.api.Status
-import com.google.android.gms.maps.CameraUpdateFactory
-import com.google.android.gms.maps.GoogleMap
-import com.google.android.gms.maps.OnMapReadyCallback
-import com.google.android.gms.maps.SupportMapFragment
-import com.google.android.gms.maps.model.LatLng
-import com.google.android.gms.maps.model.Marker
-import com.google.android.gms.maps.model.MarkerOptions
-import com.google.android.libraries.places.api.Places
-import com.google.android.libraries.places.api.model.Place
-import com.google.android.libraries.places.api.model.RectangularBounds
-import com.google.android.libraries.places.widget.AutocompleteSupportFragment
-import com.google.android.libraries.places.widget.listener.PlaceSelectionListener
-import java.io.IOException
-import java.util.Locale
-import kotlin.math.cos
 
-class ReminderCreationFragment : Fragment(), OnMapReadyCallback {
+class ReminderCreationFragment : Fragment() {
 
     private companion object {
-        const val DEFAULT_ZOOM = 15f
-        const val DEFAULT_LAT = 45.9636  // Default to UNB coordinates
-        const val DEFAULT_LNG = -66.6431
         const val MIN_RADIUS = 50f
         const val MAX_RADIUS = 10000f
         const val TAG = "ReminderCreation"
+        const val DEFAULT_LAT = 45.9636f
+        const val DEFAULT_LNG = -66.6431f
+        private const val PENDING_LOCATION_KEY = "pending_location_update"
     }
 
     private var _binding: FragmentReminderCreationBinding? = null
     private val binding get() = _binding!!
     private lateinit var permissionHelper: PermissionHelper
     private lateinit var geofenceHelper: GeofenceHelper
+    private var pendingLocationUpdate: Bundle? = null
 
     private val viewModel: ReminderViewModel by viewModels {
         ViewModelProvider.AndroidViewModelFactory.getInstance(requireActivity().application)
     }
 
-    private var map: GoogleMap? = null
-    private var selectedLocation: LatLng? = null
-    private var currentZoom: Float = DEFAULT_ZOOM
+    private var selectedLatitude: Double? = null
+    private var selectedLongitude: Double? = null
+    private var selectedRadius: Float? = null
     private var reminderId: Long = -1L
+    private var selectedGeofenceType: GeofenceType = GeofenceType.ARRIVE_AT
 
     override fun onCreateView(
         inflater: LayoutInflater,
@@ -70,6 +52,10 @@ class ReminderCreationFragment : Fragment(), OnMapReadyCallback {
 
     override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
         super.onViewCreated(view, savedInstanceState)
+        savedInstanceState?.let {
+            // Restore pending location update if exists
+            pendingLocationUpdate = it.getBundle(PENDING_LOCATION_KEY)
+        }
         initializeComponents()
     }
 
@@ -77,18 +63,13 @@ class ReminderCreationFragment : Fragment(), OnMapReadyCallback {
         geofenceHelper = GeofenceHelper(requireContext())
         reminderId = arguments?.getLong("reminderId", -1L) ?: -1L
 
-        if (!Places.isInitialized()) {
-            Toast.makeText(requireContext(), "Error: Places API not initialized", Toast.LENGTH_LONG).show()
-            return
-        }
-
         permissionHelper.checkAndRequestPermissions {
             try {
                 setupUI()
-                setupPlacesAutocomplete()
-                setupMap()
+                setupLocationSelection()
+                observePlaceSelection()
                 if (reminderId == -1L) {
-                    loadDefaultValues() // Load default radius for new reminders
+                    loadDefaultValues()
                 } else {
                     loadReminderIfEditing()
                 }
@@ -97,11 +78,6 @@ class ReminderCreationFragment : Fragment(), OnMapReadyCallback {
                 Toast.makeText(requireContext(), "Error setting up: ${e.message}", Toast.LENGTH_LONG).show()
             }
         }
-    }
-
-    private fun loadDefaultValues() {
-        val preferencesHelper = PreferencesHelper(requireContext())
-        binding.editTextRadius.setText(preferencesHelper.defaultRadius.toString())
     }
 
     private fun setupUI() {
@@ -120,318 +96,173 @@ class ReminderCreationFragment : Fragment(), OnMapReadyCallback {
                     }
                 }
             }
-        }
-    }
-
-    private fun setupMap() {
-        val mapFragment = childFragmentManager
-            .findFragmentById(R.id.map) as SupportMapFragment
-        mapFragment.getMapAsync(this)
-    }
-
-    override fun onMapReady(googleMap: GoogleMap) {
-        map = googleMap.apply {
-            // Set up map UI settings
-            uiSettings.apply {
-                isZoomControlsEnabled = true
-                isScrollGesturesEnabled = true
-                isZoomGesturesEnabled = true
-            }
-
-            // Initialize with default location if none selected
-            if (selectedLocation == null) {
-                selectedLocation = LatLng(DEFAULT_LAT, DEFAULT_LNG)
-                animateCameraToLocation(selectedLocation!!, DEFAULT_ZOOM)
-            }
-
-            setOnMapClickListener { latLng ->
-                handleLocationSelection(latLng)
-            }
-
-            setOnCameraIdleListener {
-                currentZoom = cameraPosition.zoom
-            }
-
-            setOnMarkerDragListener(object : GoogleMap.OnMarkerDragListener {
-                override fun onMarkerDragStart(marker: Marker) {}
-                override fun onMarkerDrag(marker: Marker) {}
-                override fun onMarkerDragEnd(marker: Marker) {
-                    handleLocationSelection(marker.position)
-                }
-            })
-        }
-
-        updateMapMarker()
-    }
-
-//    private fun setupPlacesAutocomplete() {
-//        try {
-//            val autocompleteFragment = childFragmentManager
-//                .findFragmentById(R.id.autocomplete_fragment) as? AutocompleteSupportFragment
-//                ?: return
-//
-//            autocompleteFragment.apply {
-//                setPlaceFields(listOf(
-//                    Place.Field.ID,
-//                    Place.Field.DISPLAY_NAME,
-//                    Place.Field.FORMATTED_ADDRESS,
-//                    Place.Field.LOCATION,
-//                    Place.Field.VIEWPORT
-//                ))
-//
-//                setHint("Search for a location")
-//                setCountries("US", "CA")
-//
-//                setOnPlaceSelectedListener(object : PlaceSelectionListener {
-//                    override fun onPlaceSelected(place: Place) {
-//                        Log.d(TAG, "Place selected: ${place.displayName}, ${place.formattedAddress}")
-//                        place.location?.let { location ->
-//                            selectedLocation = location
-//                            binding.editTextAddress.setText(place.formattedAddress)
-//                            animateCameraToLocation(location, DEFAULT_ZOOM)
-//                            updateMapMarker()
-//                        }
-//                    }
-//
-//                    override fun onError(status: Status) {
-//                        Log.e(TAG, "An error occurred: $status")
-//                        Toast.makeText(
-//                            context,
-//                            "Error selecting place: ${status.statusMessage}",
-//                            Toast.LENGTH_SHORT
-//                        ).show()
-//                    }
-//                })
-//            }
-//        } catch (e: Exception) {
-//            Log.e(TAG, "Error setting up Places Autocomplete: ${e.message}")
-//            Toast.makeText(
-//                context,
-//                "Error setting up location search: ${e.message}",
-//                Toast.LENGTH_LONG
-//            ).show()
-//        }
-//    }
-private fun setupPlacesAutocomplete() {
-    try {
-        val autocompleteFragment = childFragmentManager
-            .findFragmentById(R.id.autocomplete_fragment) as? AutocompleteSupportFragment
-            ?: return
-
-        // Get the user's last known location
-        val lastLocation: Location? = getLastKnownLocation()
-
-        autocompleteFragment.apply {
-            setPlaceFields(listOf(
-                Place.Field.ID,
-                Place.Field.DISPLAY_NAME,
-                Place.Field.FORMATTED_ADDRESS,
-                Place.Field.LOCATION,
-                Place.Field.VIEWPORT
-            ))
-
-            setHint("Search for a location")
-
-            // Only set location bias without any type filters or restrictions
-            lastLocation?.let { location ->
-                // Create a larger rectangular bounds (around 100km radius for better local context)
-                val latRadian = Math.toRadians(location.latitude)
-                val degLatKm = 110.574 // km per degree of latitude
-                val degLongKm = 111.320 * cos(latRadian) // km per degree of longitude
-
-                val latDelta = 100.0 / degLatKm // +/- 100km in lat
-                val longDelta = 100.0 / degLongKm // +/- 100km in long
-
-                val bounds = RectangularBounds.newInstance(
-                    LatLng(location.latitude - latDelta, location.longitude - longDelta),
-                    LatLng(location.latitude + latDelta, location.longitude + longDelta)
-                )
-
-                // Only set bias, no restriction
-                setLocationBias(bounds)
-            }
-
-            setCountries("US", "CA")
-
-            setOnPlaceSelectedListener(object : PlaceSelectionListener {
-                override fun onPlaceSelected(place: Place) {
-                    Log.d(TAG, "Place selected: ${place.displayName}, ${place.formattedAddress}")
-                    place.location?.let { location ->
-                        selectedLocation = location
-                        binding.editTextAddress.setText(place.formattedAddress)
-                        animateCameraToLocation(location, DEFAULT_ZOOM)
-                        updateMapMarker()
+            // Setup geofence type selection
+            toggleGeofenceType.addOnButtonCheckedListener { _, checkedId, isChecked ->
+                if (isChecked) {
+                    selectedGeofenceType = when (checkedId) {
+                        R.id.buttonArriveAt -> GeofenceType.ARRIVE_AT
+                        R.id.buttonLeaveAt -> GeofenceType.LEAVE_AT
+                        else -> GeofenceType.ARRIVE_AT
                     }
                 }
+            }
+            buttonArriveAt.isChecked = true
+        }
+    }
 
-                override fun onError(status: Status) {
-                    Log.e(TAG, "An error occurred: $status")
-                    Toast.makeText(
-                        context,
-                        "Error selecting place: ${status.statusMessage}",
-                        Toast.LENGTH_SHORT
-                    ).show()
+    private fun setupLocationSelection() {
+        binding.locationCard.setOnClickListener {
+            Log.d(TAG, "Location card clicked - Current values: " +
+                    "Address: ${binding.textViewSelectedAddress.text}, " +
+                    "Lat: $selectedLatitude, Lng: $selectedLongitude, Radius: $selectedRadius")
+
+            try {
+                val bundle = Bundle().apply {
+                    putString("address", binding.textViewSelectedAddress.text.toString())
+                    putFloat("radius", selectedRadius ?: PreferencesHelper(requireContext()).defaultRadius)
+                    putFloat("latitude", selectedLatitude?.toFloat() ?: DEFAULT_LAT.toFloat())
+                    putFloat("longitude", selectedLongitude?.toFloat() ?: DEFAULT_LNG.toFloat())
                 }
-            })
-        }
-    } catch (e: Exception) {
-        Log.e(TAG, "Error setting up Places Autocomplete: ${e.message}")
-        Toast.makeText(
-            context,
-            "Error setting up location search: ${e.message}",
-            Toast.LENGTH_LONG
-        ).show()
-    }
-}
 
-    private fun getLastKnownLocation(): Location? {
-        val locationManager = ContextCompat.getSystemService(requireContext(), LocationManager::class.java)
-
-        if (!permissionHelper.hasLocationPermission()) {
-            Log.d(TAG, "Location permission not granted")
-            return null
-        }
-
-        try {
-            // Check GPS provider
-            if (locationManager?.isProviderEnabled(LocationManager.GPS_PROVIDER) == true) {
-                return locationManager.getLastKnownLocation(LocationManager.GPS_PROVIDER)
-            }
-
-            // Fall back to network provider
-            if (locationManager?.isProviderEnabled(LocationManager.NETWORK_PROVIDER) == true) {
-                return locationManager.getLastKnownLocation(LocationManager.NETWORK_PROVIDER)
-            }
-
-            return null
-        } catch (e: SecurityException) {
-            Log.e(TAG, "Security Exception when getting location: ${e.message}")
-            return null
-        } catch (e: Exception) {
-            Log.e(TAG, "Error getting location: ${e.message}")
-            return null
-        }
-    }
-
-    private fun handleLocationSelection(latLng: LatLng) {
-        selectedLocation = latLng
-        updateMapMarker()
-        updateAddressFromLocation(latLng)
-    }
-
-    private fun animateCameraToLocation(location: LatLng, zoom: Float? = null) {
-        map?.animateCamera(
-            CameraUpdateFactory.newLatLngZoom(
-                location,
-                zoom ?: currentZoom
-            )
-        )
-    }
-
-    private fun updateMapMarker() {
-        map?.clear()
-        selectedLocation?.let { location ->
-            map?.addMarker(
-                MarkerOptions()
-                    .position(location)
-                    .draggable(true)
-                    .title("Selected Location")
-            )
-            animateCameraToLocation(location)
-        }
-    }
-
-    private fun updateAddressFromLocation(latLng: LatLng) {
-        try {
-            val geocoder = Geocoder(requireContext(), Locale.getDefault())
-
-            geocoder.getFromLocation(latLng.latitude, latLng.longitude, 1) { addresses ->
-                handleGeocodeResult(addresses)
-            }
-        } catch (e: IOException) {
-            Log.e(TAG, "Error getting address: ${e.message}")
-            activity?.runOnUiThread {
-                Toast.makeText(context, "Error getting address: ${e.message}", Toast.LENGTH_SHORT).show()
+                findNavController().navigate(
+                    R.id.action_reminderCreationFragment_to_placeSelectionFragment,
+                    bundle
+                )
+            } catch (e: Exception) {
+                Log.e(TAG, "Error navigating to place selection: ${e.message}", e)
+                Toast.makeText(context, "Error opening location selection: ${e.message}", Toast.LENGTH_SHORT).show()
             }
         }
     }
 
-    private fun handleGeocodeResult(addresses: List<android.location.Address>) {
-        if (addresses.isNotEmpty()) {
-            val address = addresses[0]
-            val addressText = buildAddressText(address)
-
-            activity?.runOnUiThread {
-                binding.editTextAddress.setText(addressText)
-                childFragmentManager.findFragmentById(R.id.autocomplete_fragment)
-                    ?.let { it as? AutocompleteSupportFragment }
-                    ?.setText(addressText)
-            }
-        } else {
-            activity?.runOnUiThread {
-                Toast.makeText(context, "Could not find address for this location", Toast.LENGTH_SHORT).show()
+    private fun observePlaceSelection() {
+        findNavController().currentBackStackEntry?.savedStateHandle?.getLiveData<Bundle>("place_data")?.observe(
+            viewLifecycleOwner) { result ->
+            result?.let {
+                pendingLocationUpdate = it  // Store the pending update
+                updateLocationUI(it)  // Update UI with new location
             }
         }
     }
 
-    private fun buildAddressText(address: android.location.Address): String {
-        return buildString {
-            // Street address
-            val streetNumber = address.subThoroughfare
-            val street = address.thoroughfare
-            if (!streetNumber.isNullOrEmpty() && !street.isNullOrEmpty()) {
-                append("$streetNumber $street")
-            } else if (!street.isNullOrEmpty()) {
-                append(street)
+    private fun updateLocationUI(locationData: Bundle) {
+        selectedLatitude = locationData.getDouble("latitude")
+        selectedLongitude = locationData.getDouble("longitude")
+        selectedRadius = locationData.getFloat("radius")
+
+        binding.apply {
+            textViewSelectedAddress.text = locationData.getString("address")
+            textViewRadius.apply {
+                visibility = View.VISIBLE
+                text = "Radius: ${selectedRadius?.toInt()} meters"
             }
-
-            // City
-            address.locality?.let { append(", $it") }
-
-            // State/Province
-            address.adminArea?.let { append(", $it") }
-
-            // Postal code
-            address.postalCode?.let { append(", $it") }
-
-            // Country
-            address.countryName?.let { append(", $it") }
+            geofenceTypeContainer.visibility = View.VISIBLE
         }
+    }
+
+    private fun loadReminderIfEditing() {
+        if (reminderId != -1L) {
+            viewModel.getReminder(reminderId).observe(viewLifecycleOwner) { reminder ->
+                reminder?.let {
+                    // Only load location data if there's no pending update
+                    if (pendingLocationUpdate == null) {
+                        binding.apply {
+                            editTextTitle.setText(it.title)
+                            editTextDescription.setText(it.description)
+                            textViewSelectedAddress.text = it.address
+                            textViewRadius.apply {
+                                visibility = View.VISIBLE
+                                text = "Radius: ${it.radius.toInt()} meters"
+                            }
+                            // Show geofence type container and set the correct selection
+                            geofenceTypeContainer.visibility = View.VISIBLE
+                            when (it.geofenceType) {
+                                GeofenceType.ARRIVE_AT -> buttonArriveAt.isChecked = true
+                                GeofenceType.LEAVE_AT -> buttonLeaveAt.isChecked = true
+                            }
+                        }
+                        selectedLatitude = it.latitude
+                        selectedLongitude = it.longitude
+                        selectedRadius = it.radius
+                        selectedGeofenceType = it.geofenceType  // Save the geofence type
+                    } else {
+                        // Load non-location data only
+                        binding.apply {
+                            editTextTitle.setText(it.title)
+                            editTextDescription.setText(it.description)
+                            // Show geofence type container and set the correct selection
+                            geofenceTypeContainer.visibility = View.VISIBLE
+                            when (it.geofenceType) {
+                                GeofenceType.ARRIVE_AT -> buttonArriveAt.isChecked = true
+                                GeofenceType.LEAVE_AT -> buttonLeaveAt.isChecked = true
+                            }
+                        }
+                        selectedGeofenceType = it.geofenceType  // Save the geofence type
+                        // Restore pending location update
+                        updateLocationUI(pendingLocationUpdate!!)
+                    }
+                }
+            }
+        }
+    }
+
+    override fun onSaveInstanceState(outState: Bundle) {
+        super.onSaveInstanceState(outState)
+        pendingLocationUpdate?.let {
+            outState.putBundle(PENDING_LOCATION_KEY, it)
+        }
+    }
+
+    private fun loadDefaultValues() {
+        val preferencesHelper = PreferencesHelper(requireContext())
+        selectedRadius = preferencesHelper.defaultRadius
+        binding.textViewSelectedAddress.text = "Pick a Place"
     }
 
     private fun validateInput(): Boolean {
         val title = binding.editTextTitle.text.toString()
         val description = binding.editTextDescription.text.toString()
-        val address = binding.editTextAddress.text.toString()
-        val radius = binding.editTextRadius.text.toString().toFloatOrNull() ?: 100f
 
         return when {
             title.isBlank() -> {
-                Toast.makeText(context, "Please enter a title", Toast.LENGTH_SHORT).show()
+                showError("Please enter a title")
                 false
             }
             description.isBlank() -> {
-                Toast.makeText(context, "Please enter a description", Toast.LENGTH_SHORT).show()
+                showError("Please enter a description")
                 false
             }
-            address.isBlank() -> {
-                Toast.makeText(context, "Please select a location", Toast.LENGTH_SHORT).show()
+            selectedLatitude == null || selectedLongitude == null -> {
+                showError("Please select a location")
                 false
             }
-            selectedLocation == null -> {
-                Toast.makeText(context, "Please select a location on the map", Toast.LENGTH_SHORT).show()
+            selectedRadius == null -> {
+                showError("Please set a radius")
                 false
             }
-            radius < MIN_RADIUS -> {
-                Toast.makeText(context, "Radius must be at least $MIN_RADIUS meters", Toast.LENGTH_SHORT).show()
+            selectedRadius!! < MIN_RADIUS -> {
+                showError("Radius must be at least $MIN_RADIUS meters")
                 false
             }
-            radius > MAX_RADIUS -> {
-                Toast.makeText(context, "Radius cannot exceed $MAX_RADIUS meters", Toast.LENGTH_SHORT).show()
+            selectedRadius!! > MAX_RADIUS -> {
+                showError("Radius cannot exceed $MAX_RADIUS meters")
                 false
             }
             else -> true
         }
+    }
+
+    private fun createReminderFromInput(): Reminder {
+        return Reminder(
+            id = if (reminderId != -1L) reminderId else 0,
+            title = binding.editTextTitle.text.toString(),
+            description = binding.editTextDescription.text.toString(),
+            address = binding.textViewSelectedAddress.text.toString(),
+            latitude = selectedLatitude!!,
+            longitude = selectedLongitude!!,
+            radius = selectedRadius!!,
+            geofenceType = selectedGeofenceType
+        )
     }
 
     private fun saveReminder() {
@@ -445,27 +276,9 @@ private fun setupPlacesAutocomplete() {
                 }
             } catch (e: Exception) {
                 Log.e(TAG, "Error saving reminder: ${e.message}")
-                Toast.makeText(context, "Error saving reminder: ${e.message}", Toast.LENGTH_SHORT).show()
+                showError("Error saving reminder: ${e.message}")
             }
         }
-    }
-
-    private fun createReminderFromInput(): Reminder {
-        val title = binding.editTextTitle.text.toString()
-        val description = binding.editTextDescription.text.toString()
-        val address = binding.editTextAddress.text.toString()
-        val radius = binding.editTextRadius.text.toString().toFloatOrNull() ?: 100f
-        val location = selectedLocation ?: throw IllegalStateException("Location not selected")
-
-        return Reminder(
-            id = if (reminderId != -1L) reminderId else 0,
-            title = title,
-            description = description,
-            address = address,
-            latitude = location.latitude,
-            longitude = location.longitude,
-            radius = radius
-        )
     }
 
     private fun addNewReminder(reminder: Reminder) {
@@ -475,7 +288,7 @@ private fun setupPlacesAutocomplete() {
                 findNavController().navigateUp()
             },
             onError = { error ->
-                Toast.makeText(context, "Error: $error", Toast.LENGTH_SHORT).show()
+                showError("Error: $error")
             }
         )
     }
@@ -487,7 +300,7 @@ private fun setupPlacesAutocomplete() {
                 findNavController().navigateUp()
             },
             onError = { error ->
-                Toast.makeText(context, "Error: $error", Toast.LENGTH_SHORT).show()
+                showError("Error: $error")
             }
         )
     }
@@ -509,26 +322,13 @@ private fun setupPlacesAutocomplete() {
                 findNavController().navigateUp()
             },
             onError = { error ->
-                Toast.makeText(context, "Error: $error", Toast.LENGTH_SHORT).show()
+                showError("Error: $error")
             }
         )
     }
 
-    private fun loadReminderIfEditing() {
-        if (reminderId != -1L) {
-            viewModel.getReminder(reminderId).observe(viewLifecycleOwner) { reminder ->
-                reminder?.let {
-                    binding.apply {
-                        editTextTitle.setText(it.title)
-                        editTextDescription.setText(it.description)
-                        editTextAddress.setText(it.address)
-                        editTextRadius.setText(it.radius.toString())
-                    }
-                    selectedLocation = LatLng(it.latitude, it.longitude)
-                    updateMapMarker()
-                }
-            }
-        }
+    private fun showError(message: String) {
+        Toast.makeText(requireContext(), message, Toast.LENGTH_SHORT).show()
     }
 
     override fun onDestroyView() {

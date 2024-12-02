@@ -65,7 +65,7 @@ class NotificationHelper(private val context: Context) {
                 )
                 .addAction(
                     R.drawable.ic_snooze,
-                    "Snooze for 1 hour", // Updated text to be more descriptive
+                    "Snooze",
                     snoozePendingIntent
                 )
                 .build()
