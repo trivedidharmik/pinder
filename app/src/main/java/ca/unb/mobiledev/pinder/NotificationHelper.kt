@@ -7,7 +7,6 @@ import android.app.PendingIntent
 import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
-import android.os.Build
 import android.util.Log
 import androidx.core.app.ActivityCompat
 import androidx.core.app.NotificationCompat
@@ -142,14 +141,10 @@ class NotificationHelper(private val context: Context) {
     }
 
     private fun checkNotificationPermission(): Boolean {
-        return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-            ActivityCompat.checkSelfPermission(
-                context,
-                Manifest.permission.POST_NOTIFICATIONS
-            ) == PackageManager.PERMISSION_GRANTED
-        } else {
-            true
-        }
+        return ActivityCompat.checkSelfPermission(
+            context,
+            Manifest.permission.POST_NOTIFICATIONS
+        ) == PackageManager.PERMISSION_GRANTED
     }
 
     fun showSnoozedReminderNotification(reminder: Reminder) {
@@ -182,7 +177,7 @@ class NotificationHelper(private val context: Context) {
                 )
                 .addAction(
                     R.drawable.ic_snooze,
-                    "Snooze for 1 hour",
+                    "Snooze",
                     snoozePendingIntent
                 )
                 .build()
