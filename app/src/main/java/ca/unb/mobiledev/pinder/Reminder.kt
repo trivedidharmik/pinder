@@ -12,6 +12,11 @@ enum class ReminderPriority {
     HIGH
 }
 
+enum class GeofenceType {
+    ARRIVE_AT,
+    LEAVE_AT
+}
+
 data class Reminder(
     val id: Long = 0,
     val title: String,
@@ -23,5 +28,6 @@ data class Reminder(
     val status: ReminderStatus = ReminderStatus.PENDING,
     val priority: ReminderPriority = ReminderPriority.MEDIUM,
     val createdAt: Long = System.currentTimeMillis(),
-    val completedAt: Long? = null
+    val completedAt: Long? = null,
+    val geofenceType: GeofenceType = GeofenceType.ARRIVE_AT
 )

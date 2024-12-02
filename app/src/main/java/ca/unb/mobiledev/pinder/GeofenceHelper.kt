@@ -64,6 +64,11 @@ class GeofenceHelper(private val context: Context) {
     }
 
     private fun buildGeofence(reminder: Reminder): Geofence {
+        val transitionType = when (reminder.geofenceType) {
+            GeofenceType.ARRIVE_AT -> Geofence.GEOFENCE_TRANSITION_ENTER or Geofence.GEOFENCE_TRANSITION_DWELL
+            GeofenceType.LEAVE_AT -> Geofence.GEOFENCE_TRANSITION_EXIT
+        }
+
         return Geofence.Builder()
             .setRequestId(reminder.id.toString())
             .setCircularRegion(
@@ -71,8 +76,8 @@ class GeofenceHelper(private val context: Context) {
                 reminder.longitude,
                 reminder.radius
             )
-            .setTransitionTypes(Geofence.GEOFENCE_TRANSITION_ENTER or Geofence.GEOFENCE_TRANSITION_DWELL)
-            .setLoiteringDelay(30000) // 30 seconds dwell time
+            .setTransitionTypes(transitionType)
+            .setLoiteringDelay(30000) // 30 seconds dwell time (only used for ARRIVE_AT)
             .setExpirationDuration(Geofence.NEVER_EXPIRE)
             .build()
     }

@@ -108,13 +108,16 @@ class NotificationActionReceiver : BroadcastReceiver() {
                 val reminderEntity = database.reminderDao().getReminderById(reminderId)
                 reminderEntity?.let { entity ->
                     val reminder = ReminderMapper.fromEntity(entity)
+                    val preferencesHelper = PreferencesHelper(context)
+                    val snoozeDuration = preferencesHelper.defaultSnoozeDuration
+
                     scheduleDelayedNotification(context, reminder)
 
                     // Show snooze confirmation toast
                     Handler(Looper.getMainLooper()).post {
                         Toast.makeText(
                             context,
-                            "Reminder snoozed for 1 hour",
+                            "Reminder snoozed for $snoozeDuration minutes",
                             Toast.LENGTH_SHORT
                         ).show()
                     }

@@ -1,5 +1,6 @@
 package ca.unb.mobiledev.pinder.data
 
+import ca.unb.mobiledev.pinder.GeofenceType
 import ca.unb.mobiledev.pinder.Reminder
 import ca.unb.mobiledev.pinder.ReminderPriority
 import ca.unb.mobiledev.pinder.ReminderStatus
@@ -13,6 +14,7 @@ object ReminderMapper {
         latitude = reminder.latitude,
         longitude = reminder.longitude,
         radius = reminder.radius,
+        geofenceType = reminder.geofenceType.name,
         status = reminder.status.name,
         priority = reminder.priority.name,
         createdAt = reminder.createdAt,
@@ -27,6 +29,7 @@ object ReminderMapper {
         latitude = entity.latitude,
         longitude = entity.longitude,
         radius = entity.radius,
+        geofenceType = GeofenceType.valueOf(entity.geofenceType),
         status = ReminderStatus.valueOf(entity.status),
         priority = ReminderPriority.valueOf(entity.priority),
         createdAt = entity.createdAt,
