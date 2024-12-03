@@ -54,22 +54,6 @@ class GeofenceBroadcastReceiver : BroadcastReceiver() {
         }
     }
 
-//    private fun handleGeofenceEnter(context: Context, geofencingEvent: GeofencingEvent) {
-//        val triggeringGeofences = geofencingEvent.triggeringGeofences
-//        if (triggeringGeofences.isNullOrEmpty()) {
-//            Log.e(TAG, "No triggering geofences found")
-//            return
-//        }
-//
-//        val triggeringLocation = geofencingEvent.triggeringLocation
-//        Log.d(TAG, "Triggering location: lat=${triggeringLocation?.latitude}, lng=${triggeringLocation?.longitude}")
-//
-//        triggeringGeofences.forEach { geofence ->
-//            Log.d(TAG, "Processing geofence ID: ${geofence.requestId}")
-//            handleGeofenceTransition(context, geofence.requestId)
-//        }
-//    }
-
     private fun handleGeofenceTransition(context: Context, geofencingEvent: GeofencingEvent, type: GeofenceType) {
         val triggeringGeofences = geofencingEvent.triggeringGeofences
         if (triggeringGeofences.isNullOrEmpty()) {
