@@ -74,7 +74,7 @@ class MainActivity : AppCompatActivity() {
             // Check if Places is already initialized
             if (!Places.isInitialized()) {
                 // Replace "YOUR_API_KEY" with your actual API key
-                Places.initialize(applicationContext, "REMOVED_API_KEY")
+                Places.initialize(applicationContext, getString(R.string.google_maps_key))
                 Log.d(TAG, "Places API initialized successfully")
             }
         } catch (e: Exception) {
