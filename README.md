@@ -95,7 +95,7 @@ The app has been tested on:
 - WorkManager for background tasks
 
 ## Build Information
-- compileSdk: 34
+- compileSdk: 35
 - buildTools: Latest stable version
 - Kotlin version: 1.9.10
 - Gradle version: 8.5.2
