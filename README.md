@@ -45,7 +45,7 @@ Note: The application requires Google Play Services and valid API keys for Maps 
 ### Test Environments
 The app has been tested on:
 - Google Pixel 4a (API 34)
-- Device orientation: Both portrait and landscape
+- Samsung Galaxy S24 Ultra (API 34)
 
 ### Sample Test Cases
 1. **Basic Reminder Creation**
