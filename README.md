@@ -35,9 +35,10 @@ Pinder is a location-based reminder application that helps users create and mana
 
 ## Installation & Setup
 1. Clone the repository or unzip the project files
-2. Open the project in Android Studio
-3. Sync project with Gradle files
-4. Build and run the application
+2. Add the API key file provided to the professor via email at this location: app/src/main/res/values/google_maps_api.xml
+3. Open the project in Android Studio
+4. Sync project with Gradle files
+5. Build and run the application
 
 Note: The application requires Google Play Services and valid API keys for Maps and Places services.
 
@@ -85,6 +86,7 @@ The app has been tested on:
 2. Location updates may be less frequent when app is in background
 3. Initial location permission requests may need app restart on some devices
 4. Geocoding services require an active internet connection
+5. Geofence does not work as expected in emulators, please use physical device for accurate results.
 
 ## Architecture & Dependencies
 - MVVM Architecture
