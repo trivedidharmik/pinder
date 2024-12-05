@@ -87,6 +87,8 @@ The app has been tested on:
 3. Initial location permission requests may need app restart on some devices
 4. Geocoding services require an active internet connection
 5. Geofence does not work as expected in emulators, please use physical device for accurate results.
+6. The title is still "New Reminder" on the edit reminder screen.
+7. The Settings page is only accessible from the home fragment (Even though the icon appears on reminder fragments.)
 
 ## Architecture & Dependencies
 - MVVM Architecture
